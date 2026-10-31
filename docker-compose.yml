@@ -1,0 +1,43 @@
+# ============================================================================
+# docker-compose.yml — Full stack: backend + frontend
+# Usage: docker compose up --build
+# Dashboard: http://localhost:3000 · API: http://localhost:3001
+# ============================================================================
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./server/data:/app/data
+      - ./server/logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      # Copy your .env values here (or use a .env file at repo root)
+      - PROXY_USERNAME=${PROXY_USERNAME:-hmxpvtyv}
+      - PROXY_PASSWORD=${PROXY_PASSWORD:-s56i3b0mmjwv}
+      - MIN_INTERVAL_MS=${MIN_INTERVAL_MS:-5000}
+      - MAX_INTERVAL_MS=${MAX_INTERVAL_MS:-30000}
+      - CONCURRENCY=${CONCURRENCY:-3}
+      - DEMO_MODE=${DEMO_MODE:-0}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
