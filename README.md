@@ -1,6 +1,20 @@
 # websense
 websense
 
+---
+
+> ## 🚀 STATUS: WEB APP BUILT & TESTED
+>
+> The proxy-powered random page visitor is **implemented and running** — backend (Node 22, Express, node:sqlite, Socket.IO), frontend (React 18 + Vite + Tailwind dashboard), Docker deployment, and demo mode.
+>
+> 📁 **Code:** `server/` (backend) · `client/` (dashboard) · `ROADMAP.md` (ultra-granular roadmap + todo list, web + Android)
+> 🚀 **Run:** `cd server && npm install && DEMO_MODE=1 npm run dev` → http://localhost:3001
+> 🐳 **Docker:** `docker compose up --build` → http://localhost:3000
+>
+> See **ROADMAP.md** for the complete implementation roadmap, statuses, and what's next (testing, Android, production deploy).
+
+---
+
 
 
 # 🚀 Complete Implementation Roadmap & Todo List
