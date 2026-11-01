@@ -38,7 +38,10 @@ export default {
     retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '2', 10),
     retryBackoffBase: parseInt(process.env.RETRY_BACKOFF_BASE_MS || '500', 10),
     mode: process.env.VISIT_MODE || 'http', // http | browser | mixed
+<<<<<<< HEAD
     headless: process.env.HEADLESS !== '0', // HEADLESS=0 → visible browser window
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     autoStart: process.env.AUTO_START === '1',
     demoMode: process.env.DEMO_MODE === '1', // simulate visits without network
     sessionMode: process.env.SESSION_MODE === '1', // multi-page sessions
@@ -46,6 +49,7 @@ export default {
   },
 
   // -------------------------------------------------------------------------
+<<<<<<< HEAD
   // Free proxy aggregation (GitHub repos: proxifly, TheSpeedX, monosans, …)
   // Merged into the pool alongside the paid Webshare proxies.
   // -------------------------------------------------------------------------
@@ -66,6 +70,8 @@ export default {
   },
 
   // -------------------------------------------------------------------------
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   // Session simulation (multi-page visits, bounce rate control, return visitors)
   // -------------------------------------------------------------------------
   session: {

@@ -173,8 +173,11 @@ export const PROXIES = [
 export function buildProxyList(proxyAuth) {
   return PROXIES.map((p) => ({
     ...p,
+<<<<<<< HEAD
     type: p.type || 'http',
     source: 'webshare', // paid pool — user's Webshare subscription (~100 proxies)
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     username: proxyAuth.username,
     password: proxyAuth.password,
   }));

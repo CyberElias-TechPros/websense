@@ -359,6 +359,7 @@ export class ProxyManager {
     return proxy;
   }
 
+<<<<<<< HEAD
   addProxy({ host, port, country, city, flag, username, password, type = 'http', source = 'manual' }) {
     if (this.proxies.some((p) => p.host === host && p.port === port)) return null;
     const proxy = {
@@ -371,6 +372,13 @@ export class ProxyManager {
       source,
       username: username !== undefined && username !== '' ? username : null,
       password: password !== undefined && password !== '' ? password : null,
+=======
+  addProxy({ host, port, country, city, flag, username, password }) {
+    if (this.proxies.some((p) => p.host === host && p.port === port)) return null;
+    const proxy = {
+      host, port, country, city, flag: flag || '🌐',
+      username: username || 'hmxpvtyv', password: password || 's56i3b0mmjwv',
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       id: `${host}:${port}`,
       enabled: true, status: 'unknown',
       successCount: 0, failCount: 0, totalLatency: 0, avgLatency: 0,
@@ -402,8 +410,11 @@ export class ProxyManager {
       country: p.country,
       city: p.city,
       flag: p.flag,
+<<<<<<< HEAD
       type: p.type || 'http',
       source: p.source || 'webshare-legacy',
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       enabled: p.enabled,
       status: p.status,
       successCount: p.successCount,

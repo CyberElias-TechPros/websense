@@ -44,7 +44,10 @@ export class VisitEngine {
       retryAttempts: 2,
       retryBackoffBase: 500,
       mode: 'http',
+<<<<<<< HEAD
       headless: true,
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       demoMode: false,
       sessionMode: false,
       screenshotOnVisit: false,
@@ -55,7 +58,10 @@ export class VisitEngine {
     this.failCount = 0;
     this.sessionCount = 0;
     this.startTime = null;
+<<<<<<< HEAD
     this.behaviorDirector = null; // AI/human behavior director (optional)
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
     this.insertVisit = db.prepare(`
       INSERT INTO visits (visit_id, url, subdomain, proxy_host, proxy_country, proxy_city,
@@ -65,6 +71,7 @@ export class VisitEngine {
     `);
   }
 
+<<<<<<< HEAD
   /** Wire the AI behavior director (call after construction). */
   setBehaviorDirector(director) {
     this.behaviorDirector = director;
@@ -95,6 +102,21 @@ export class VisitEngine {
 
     const match = presets.find(([v]) => !major || major >= v);
     return (match || presets[presets.length - 1])[1];
+=======
+  /**
+   * Map fingerprint browser+version to a tls-client fingerprint name.
+   * tls-client supports: chrome120, chrome121, chrome123, chrome124, chrome125, chrome126, chrome131, chrome133a, firefox133, firefox135, safari17_0_0, safari17_2_1, safari18_0_0, edge101, edge106, edge122, etc.
+   */
+  _getTlsFingerprint(fp) {
+    const browser = (fp.browser || 'chrome').toLowerCase();
+    const version = parseInt((fp.version || '120').replace(/[^0-9]/g, '').slice(0, 3)) || 120;
+
+    if (browser === 'firefox') return `firefox${version}`;
+    if (browser === 'safari') return `safari${String(version).replace('.', '_').replace(/_(\d)$/, '_${1}_0')}`;
+    if (browser === 'edge') return `edge${version}`;
+    if (browser === 'chrome') return `chrome${version}`;
+    return `chrome${version}`;
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   }
 
   /**
@@ -197,6 +219,7 @@ export class VisitEngine {
         const tlsClient = await loadTlsClient();
         if (tlsClient && tlsClient.Session) {
           // --- tls-client path: real browser TLS fingerprint ---
+<<<<<<< HEAD
           // NOTE: tls-client@0.0.5 exposes Session({clientIdentifier}) +
           //       executeRequest(method, url, opts). The proxy is passed per
           //       request (with credentials) — not in the constructor.
@@ -217,6 +240,17 @@ export class VisitEngine {
             : null;
 
           const response = await session.executeRequest('GET', targetUrl, {
+=======
+          const proxyUrl = `${proxy.type === 'socks5' || proxy.type === 'socks' ? 'socks5' : 'http'}://${proxy.host}:${proxy.port}`;
+          const session = new tlsClient.Session({
+            fingerprint: this._getTlsFingerprint(fp),
+            proxy: proxyUrl,
+          });
+
+          const response = await session.execute({
+            url: targetUrl,
+            method: 'GET',
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
             headers: this._orderHeaders({
               'User-Agent': userAgent,
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -231,6 +265,7 @@ export class VisitEngine {
               'Sec-Fetch-Storage-Access': 'none',
               'Cache-Control': 'max-age=0',
               ...clientHints,
+<<<<<<< HEAD
               ...netHeaders,
               ...(referrer && { 'Referer': referrer }),
             }, fp.browser),
@@ -250,6 +285,17 @@ export class VisitEngine {
 
           // Store response cookies for session persistence
           const setCookies = response.headers?.['Set-Cookie'] || response.headers?.['set-cookie'];
+=======
+              ...(cookieHeader && { 'Cookie': cookieHeader }),
+              ...netHeaders,
+              ...(referrer && { 'Referer': referrer }),
+            }, fp.browser),
+            timeout,
+          });
+
+          // Store response cookies for session persistence
+          const setCookies = response.headers?.['set-cookie'];
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
           if (this.sessionPersistence && setCookies) {
             const domain = new URL(urlEntry.url).hostname;
             const cookies = Array.isArray(setCookies) ? setCookies : [setCookies];
@@ -257,11 +303,18 @@ export class VisitEngine {
           }
 
           const latency = Date.now() - start;
+<<<<<<< HEAD
           const responseSize = response.content?.length ||
             Buffer.byteLength(String(response.text ?? '')) ||
             parseInt(response.headers?.['content-length'] || '0', 10);
 
           if (typeof session.close === 'function') await session.close();
+=======
+          const responseSize = parseInt(response.headers?.['content-length'] || '0', 10) ||
+            (response.body ? Buffer.byteLength(String(response.body)) : 0);
+
+          await session.close();
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
           return {
             success: true,
@@ -474,7 +527,10 @@ export class VisitEngine {
           proxy,
           url: finalUrl,
           userAgent,
+<<<<<<< HEAD
           headless: options.headless ?? this.config.headless,
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
           timeout: options.timeout || this.config.requestTimeout,
           sessionSeed: options.sessionSeed,
           screenshot: options.screenshot || this.config.screenshotOnVisit,
@@ -487,7 +543,10 @@ export class VisitEngine {
           fingerprint: fp,
           sessionPersistence: this.sessionPersistence,
           clientId: options.clientId,
+<<<<<<< HEAD
           behaviorDirector: this.behaviorDirector,
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
         });
         if (!outcome.success) {
           throw new Error(outcome.error || 'Browser visit failed');

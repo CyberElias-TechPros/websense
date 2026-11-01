@@ -10,11 +10,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'url';
 import db, { toSqliteDateTime } from '../database/db.js';
 import logger from '../utils/logger.js';
+<<<<<<< HEAD
 import { getAvailableProviders, fetchProxiesFromProvider } from '../core/proxy-integrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null) {
+=======
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null) {
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   const router = Router();
 
   // -----------------------------------------------------------------------
@@ -220,7 +227,11 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
         SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
         SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
         AVG(CASE WHEN success = 1 THEN latency_ms END) as avg_latency,
+<<<<<<< HEAD
         AVG(CASE WHEN success = 1 THEN (julianday('now') - julianday(created_at)) * 86400 END) as avg_time_to_visit
+=======
+        AVG(CASE WHEN success = 1 THEN DATEDIFF('second', 'now', created_at) END) as avg_time_to_visit
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       FROM visits WHERE created_at > ?
     `).get(since);
 
@@ -434,6 +445,7 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     }
   });
 
+<<<<<<< HEAD
   // Evaluate the whole pool at once (client: evaluateProxies()).
   router.post('/proxy-evaluator/evaluate-all', async (req, res) => {
     if (!proxyEvaluator) return res.status(404).json({ error: 'Proxy evaluator not available' });
@@ -468,6 +480,8 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     });
   });
 
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   // -----------------------------------------------------------------------
   // Proxy Strategies — advanced selection
   // -----------------------------------------------------------------------
@@ -484,6 +498,7 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     res.json({ success: true, strategy: strategy || 'best-first', proxy: { host: proxy.host, port: proxy.port, country: proxy.country, city: proxy.city, flag: proxy.flag } });
   });
 
+<<<<<<< HEAD
   router.get('/proxy-strategies/stats', (req, res) => {
     if (!proxyStrategies) return res.json({ enabled: false });
     const now = Date.now();
@@ -512,6 +527,11 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     });
   });
 
+=======
+  // -----------------------------------------------------------------------
+  // Proxy Integrations — multi-source proxy fetching
+  // -----------------------------------------------------------------------
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   router.get('/proxy-integrations/providers', (req, res) => {
     res.json({ providers: getAvailableProviders() });
   });
@@ -1696,6 +1716,7 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   });
 
   // -----------------------------------------------------------------------
+<<<<<<< HEAD
   // AI Behavior Director — plans HOW each visit behaves (persona, dwell,
   // scroll, hover, click intent). Providers: omniroute | ollama | openai
   // model gateways, with a deterministic heuristic fallback.
@@ -1761,6 +1782,8 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   });
 
   // -----------------------------------------------------------------------
+=======
+>>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   // Wizard / Setup API — for easy configuration
   // -----------------------------------------------------------------------
   router.get('/wizard/status', (req, res) => {
