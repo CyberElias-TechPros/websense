@@ -8,7 +8,7 @@
 /**
  * Each proxy: { host, port, country, city, flag }
  * Country codes are ISO-3166 alpha-2.
- * All proxies use Webshare credentials: hmxpvtyv / s56i3b0mmjwv
+ * All proxies use the Webshare credentials from PROXY_USERNAME/PROXY_PASSWORD env (never hardcoded).
  */
 export const PROXIES = [
   // United Kingdom
@@ -173,11 +173,8 @@ export const PROXIES = [
 export function buildProxyList(proxyAuth) {
   return PROXIES.map((p) => ({
     ...p,
-<<<<<<< HEAD
     type: p.type || 'http',
     source: 'webshare', // paid pool — user's Webshare subscription (~100 proxies)
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     username: proxyAuth.username,
     password: proxyAuth.password,
   }));

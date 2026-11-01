@@ -55,7 +55,7 @@ websense
 | **What** | Parse and structure all 10 proxies with auth credentials |
 | **Why** | Structured proxy data enables rotation algorithms |
 | **Proxy Format** | `host:port:username:password` |
-| **Auth Method** | Username/Password (hmxpvtyv:s56i3b0mmjwv) |
+| **Auth Method** | Username/Password (YOUR_WEBSHARE_USER:YOUR_WEBSHARE_PASS) |
 | **Proxy Count** | 10 residential/datacenter proxies across 7 countries |
 
 ```
@@ -605,7 +605,7 @@ Pages:
 val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("45.38.107.97", 6014))
 val authenticator = Authenticator { _, response ->
     response.request.newBuilder()
-        .header("Proxy-Authorization", Credentials.basic("hmxpvtyv", "s56i3b0mmjwv"))
+        .header("Proxy-Authorization", Credentials.basic("YOUR_WEBSHARE_USER", "YOUR_WEBSHARE_PASS"))
         .build()
 }
 val client = OkHttpClient.Builder()
@@ -1180,16 +1180,16 @@ export default {
   },
 
   proxies: [
-    { host: '45.38.107.97', port: 6014, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'GB', city: 'London', flag: '🇬🇧' },
-    { host: '64.137.96.74', port: 6641, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'ES', city: 'Madrid', flag: '🇪🇸' },
-    { host: '198.23.243.226', port: 6361, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
-    { host: '38.154.185.97', port: 6370, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Piscataway', flag: '🇺🇸' },
-    { host: '84.247.60.125', port: 6095, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'PL', city: 'Warsaw', flag: '🇵🇱' },
-    { host: '191.96.254.138', port: 6185, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
-    { host: '198.46.161.42', port: 5092, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
-    { host: '64.137.10.153', port: 5803, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'DE', city: 'Frankfurt', flag: '🇩🇪' },
-    { host: '104.164.49.38', port: 7693, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Santa Clara', flag: '🇺🇸' },
-    { host: '23.26.71.145', port: 5628, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Orem', flag: '🇺🇸' }
+    { host: '45.38.107.97', port: 6014, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'GB', city: 'London', flag: '🇬🇧' },
+    { host: '64.137.96.74', port: 6641, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'ES', city: 'Madrid', flag: '🇪🇸' },
+    { host: '198.23.243.226', port: 6361, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
+    { host: '38.154.185.97', port: 6370, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Piscataway', flag: '🇺🇸' },
+    { host: '84.247.60.125', port: 6095, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'PL', city: 'Warsaw', flag: '🇵🇱' },
+    { host: '191.96.254.138', port: 6185, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
+    { host: '198.46.161.42', port: 5092, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
+    { host: '64.137.10.153', port: 5803, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'DE', city: 'Frankfurt', flag: '🇩🇪' },
+    { host: '104.164.49.38', port: 7693, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Santa Clara', flag: '🇺🇸' },
+    { host: '23.26.71.145', port: 5628, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Orem', flag: '🇺🇸' }
   ],
 
   urls: [
@@ -3931,6 +3931,137 @@ docker-compose up --build
 
 ---
 
+## 🤖 AI Behavior Director (OmniRoute / Ollama / any OpenAI-compatible AI)
+
+Every browser visit is directed by an **AI behavior plan** (`server/core/ai-behavior-director.js`):
+the AI picks a persona (content reader, comparison shopper, quick bouncer, …) and modulates
+dwell time, scroll depth/steps, hover intensity, reading pauses and click-through intent,
+so each visit behaves like a distinct human. Plans are cached per page+device (30 min),
+time-capped (8 s, never blocking), and recorded in the visit result (`behavior` field).
+
+Provider priority (`AI_PROVIDER=auto`): **omniroute → ollama → openai → heuristic personas**.
+A deterministic heuristic persona engine always guarantees a plan when no LLM is reachable.
+
+**OmniRoute** (open-source local AI gateway, OpenAI-compatible on `:20128`) is supported out of the box:
+
+```bash
+# .env (server)
+AI_PROVIDER=auto                 # auto | omniroute | ollama | openai | off
+OMNIROUTE_URL=http://localhost:20128/v1
+OMNIROUTE_MODEL=openai/gpt-4o-mini
+OMNIROUTE_API_KEY=               # optional
+# generic OpenAI-compatible fallback: OPENAI_COMPAT_URL / OPENAI_API_KEY / OPENAI_MODEL
+AI_TIMEOUT_MS=8000
+```
+
+API: `GET /api/ai/director/status` · `POST /api/ai/director/recheck` · `POST /api/ai/director/plan`
+
+## 🌐 Free Proxy Pool (GitHub sources, next to your paid Webshare proxies)
+
+`server/core/free-proxy-fetcher.js` continuously aggregates **free proxies** from
+regularly-updated GitHub repos (proxifly/free-proxy-list, TheSpeedX/PROXY-LIST,
+monosans/proxy-list, clarketm/proxy-list, ZloiUser/hideip.me, roosterkid/openproxylist)
+and merges them into the same ProxyManager as your ~100 paid Webshare proxies —
+matched against the ~10k generated browser profiles.
+
+- Free proxies are **credential-less** and tagged `source: 'free'`; paid Webshare proxies
+  are **never** removed or altered by free-source refreshes.
+- Fetch: raw.githubusercontent.com first, with a **codeload.github.com zip fallback**
+  (`FREE_PROXY_USE_CODELOAD=1` forces it — useful where raw.githubusercontent.com is blocked).
+- Auto-refresh every 6 h + a liveness probe of a sample of new proxies (dead ones are
+  disabled, never deleted).
+
+```bash
+# .env (server)
+FREE_PROXIES=1                  # 0 disables
+FREE_PROXY_MAX=5000             # pool cap
+FREE_PROXY_REFRESH_HOURS=6
+FREE_PROXY_PER_SOURCE_CAP=2000
+FREE_PROXY_PROBE_SAMPLE=150     # 0 disables probing
+FREE_PROXY_USE_CODELOAD=0       # 1 = only codeload zips
+```
+
+API: `POST /api/proxies/free/refresh` · `GET /api/proxies/free/stats` · `PUT /api/proxies/free/config` · `GET /api/proxies/sources`
+
+## 🧭 The "garnish" layer — matching, stickiness, hygiene, observability
+
+Built on top of the two systems above:
+
+1. **Geo-match proxy selection** — every visit derives the expected country from the
+   fingerprint locale (`en-GB` → `GB`) and prefers an active proxy from that country
+   (`GEO_MATCH_PROXIES=0` disables; strategy `geo-match` forces it). New strategy is
+   listed in `GET /api/proxy-strategies`.
+2. **Per-profile proxy stickiness** — returning visitor profiles bind to the proxy they
+   first used (`visitor_profiles.proxy_host/proxy_port`); later sessions re-enter through
+   the same egress IP when it's still active, so cookies/consent stay consistent.
+3. **Free-proxy archiving** — free proxies failing `FREE_PROXY_ARCHIVE_AFTER_FAILURES` (5)
+   times in a row are **archived** (out of rotation, kept in pool, re-activated automatically
+   when a fresh GitHub list shows them again). Paid Webshare proxies are **never** archived —
+   they only get the circuit breaker.
+4. **Detection feedback → AI plans** — 403/429/CAPTCHA outcomes are recorded per host
+   (`behaviorDirector.recordOutcome`) and fed back into the next behavior plan (LLM prompt
+   gets a "be extra cautious" context; heuristic plans cut click intent, slow scrolling,
+   boost pauses). Detection feedback slowdown factor also scales pauses.
+5. **Per-domain rules** (`server/core/domain-rules.js`) — opt-out list, per-domain min
+   interval + max visits/hour, and **robots.txt respect** (fetched per domain, 24 h cache,
+   RFC 9309 longest-match with `$`/`*`). Skipped visits don't consume a proxy.
+   API: `GET/PATCH /api/domain-rules`, `POST /api/domain-rules/opt-out`,
+   `PUT /api/domain-rules/:domain`, `POST /api/domain-rules/:domain/robots/refresh`.
+6. **Observability** (`server/core/observability.js`) — `GET /api/metrics` (JSON or
+   `?format=prometheus`), `GET /api/alerts`, `POST /api/alerts/:id/ack`. Alerts:
+   `free_refresh_empty`, `free_sources_unreachable`, `ai_llm_fallback_high` (LLM gateway
+   down?), `visit_error_rate_high`, `detection_signals_high`. Alerts also fire over
+   WebSocket (`alert` event).
+7. **Secrets hygiene** — Webshare credentials are **env-only** (`PROXY_USERNAME` /
+   `PROXY_PASSWORD`); all hardcoded copies were removed from source, docker-compose,
+   README and `.env.example`. Rotate the credentials if they were ever committed to git.
+8. **Dashboard page "AI & Proxy Intel"** (`/intelligence`) — live AI director status +
+   plan preview, free-proxy pool stats/refresh/config, metrics & alerts (ack), and
+   domain rules management (opt-outs, robots.txt).
+
+## 🛡️ Expert audit round — correctness, safety & scale hardening
+
+A full-app audit (every client→server call cross-checked, business flows traced end to
+end) found and fixed:
+
+1. **Session chains now hold (critical fix)** — `executeVisit` honors caller-supplied
+   `options.url` / `options.proxy` (previously it re-rolled a random proxy + URL on every
+   page, silently breaking multi-page sessions). A caller proxy that was disabled or
+   archived meanwhile triggers re-selection; domain-rules checks use the effective URL.
+2. **Visits record behavior & skips** — new `visits.behavior` / `skipped` / `skip_reason`
+   columns, persisted on every path; `GET /api/visits?status=skipped`.
+3. **Bounded background health checks** — the 60 s sweep probes a rotating window
+   (`HEALTH_CHECK_BATCH_SIZE=100`, concurrency 25) instead of the whole pool (up to 5000);
+   archived proxies are never probed.
+4. **Input validation** — `POST /api/proxies` and `POST /api/urls` return `400` with
+   per-field details (valid host/port/type, username+password together, http/https only).
+5. **Safe config API** — `PATCH /api/config` validates against a whitelist schema
+   (unknown keys → 400, `maxInterval ≥ minInterval` against the merged config) and
+   persists across restarts; `GET /api/config` returns schema keys only (no more
+   circular-JSON 500 from internal scheduler objects).
+6. **Optional API token auth** — set `API_TOKEN` to require
+   `Authorization: Bearer <token>` on `/api` (and socket.io `auth:{token}`). The client
+   sends `VITE_API_TOKEN` (build-time) or `localStorage.websense_api_token` (runtime).
+7. **Operational hardening** — 10k fingerprint pool pre-warmed at boot; daily
+   `DB_CLEANUP_DAYS` purge; `/api/logs` tail-reads the last 2 MB; vite dev proxy targets
+   `VITE_BACKEND_PORT` (default 3001); docker-compose passes all new env vars through;
+   `npm test` runs the vitest suite (301 tests).
+
+## 📊 Analytics & ad-script integrity (why ads/analytics broke and the fix)
+
+Injected GA4/consent code must keep `window.dataLayer` an **Array** — assigning an object
+(`window.dataLayer = { consent: … }`) throws `dataLayer.push is not a function` / `dataLayer.forEach
+is not a function` inside gtag.js **and the visited site's own scripts** (including ad tags),
+which is why AdSense ads stopped rendering on some pages. Fixed in `browser-mode.js` and
+`analytics-compatibility.js`: consent is now pushed as proper `['consent','default'|'update', …]`
+events and `gtag()` is defensive. Default `ANALYTICS_CONSENT=advanced` (what a real "Accept all"
+click grants) so AdSense renders normally in GDPR regions for verification purposes.
+The stealth script also no longer references page-scope variables that don't exist
+(the `canvasSpoof is not defined` error) — spoof functions are passed explicitly to
+`evaluateOnNewDocument`.
+
+---
+
 This is a complete, production-ready application with:
 
 - **10 rotating proxies** across 7 countries with health monitoring
@@ -4028,7 +4159,7 @@ Status	🟢 DONE
 What	Parse and structure all 10 proxies with auth credentials
 Why	Structured proxy data enables rotation algorithms
 Proxy Format	host:port:username:password
-Auth Method	Username/Password (hmxpvtyv:s56i3b0mmjwv)
+Auth Method	Username/Password (YOUR_WEBSHARE_USER:YOUR_WEBSHARE_PASS)
 Proxy Count	10 residential/datacenter proxies across 7 countries
 text
 
@@ -4477,7 +4608,7 @@ Kotlin
 val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("45.38.107.97", 6014))
 val authenticator = Authenticator { _, response ->
     response.request.newBuilder()
-        .header("Proxy-Authorization", Credentials.basic("hmxpvtyv", "s56i3b0mmjwv"))
+        .header("Proxy-Authorization", Credentials.basic("YOUR_WEBSHARE_USER", "YOUR_WEBSHARE_PASS"))
         .build()
 }
 val client = OkHttpClient.Builder()
@@ -4937,16 +5068,16 @@ export default {
   },
 
   proxies: [
-    { host: '45.38.107.97', port: 6014, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'GB', city: 'London', flag: '🇬🇧' },
-    { host: '64.137.96.74', port: 6641, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'ES', city: 'Madrid', flag: '🇪🇸' },
-    { host: '198.23.243.226', port: 6361, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
-    { host: '38.154.185.97', port: 6370, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Piscataway', flag: '🇺🇸' },
-    { host: '84.247.60.125', port: 6095, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'PL', city: 'Warsaw', flag: '🇵🇱' },
-    { host: '191.96.254.138', port: 6185, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
-    { host: '198.46.161.42', port: 5092, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
-    { host: '64.137.10.153', port: 5803, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'DE', city: 'Frankfurt', flag: '🇩🇪' },
-    { host: '104.164.49.38', port: 7693, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Santa Clara', flag: '🇺🇸' },
-    { host: '23.26.71.145', port: 5628, username: 'hmxpvtyv', password: 's56i3b0mmjwv', country: 'US', city: 'Orem', flag: '🇺🇸' }
+    { host: '45.38.107.97', port: 6014, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'GB', city: 'London', flag: '🇬🇧' },
+    { host: '64.137.96.74', port: 6641, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'ES', city: 'Madrid', flag: '🇪🇸' },
+    { host: '198.23.243.226', port: 6361, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
+    { host: '38.154.185.97', port: 6370, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Piscataway', flag: '🇺🇸' },
+    { host: '84.247.60.125', port: 6095, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'PL', city: 'Warsaw', flag: '🇵🇱' },
+    { host: '191.96.254.138', port: 6185, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
+    { host: '198.46.161.42', port: 5092, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Los Angeles', flag: '🇺🇸' },
+    { host: '64.137.10.153', port: 5803, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'DE', city: 'Frankfurt', flag: '🇩🇪' },
+    { host: '104.164.49.38', port: 7693, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Santa Clara', flag: '🇺🇸' },
+    { host: '23.26.71.145', port: 5628, username: "YOUR_WEBSHARE_USER", password: "YOUR_WEBSHARE_PASS", country: 'US', city: 'Orem', flag: '🇺🇸' }
   ],
 
   urls: [
@@ -5305,8 +5436,8 @@ https://vizier.freegameplay.site/
 
 45.38.107.97
 6014
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 1 minute ago
 
 Working
@@ -5315,8 +5446,8 @@ United Kingdom
 London
 64.137.96.74
 6641
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 2 minutes ago
 
 Working
@@ -5325,8 +5456,8 @@ Spain
 Madrid
 198.23.243.226
 6361
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 2 minutes ago
 
 Working
@@ -5335,8 +5466,8 @@ United States
 Los Angeles
 38.154.185.97
 6370
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 2 minutes ago
 
 Working
@@ -5345,8 +5476,8 @@ United States
 Piscataway
 84.247.60.125
 6095
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 1 minute ago
 
 Working
@@ -5355,8 +5486,8 @@ Poland
 Warsaw
 191.96.254.138
 6185
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 2 minutes ago
 
 Working
@@ -5365,8 +5496,8 @@ United States
 Los Angeles
 198.46.161.42
 5092
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 1 minute ago
 
 Working
@@ -5375,8 +5506,8 @@ United States
 Los Angeles
 64.137.10.153
 5803
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 1 minute ago
 
 Working
@@ -5385,8 +5516,8 @@ Germany
 Frankfurt
 104.164.49.38
 7693
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 1 minute ago
 
 Working
@@ -5395,8 +5526,8 @@ United States
 Santa Clara
 23.26.71.145
 5628
-hmxpvtyv
-s56i3b0mmjwv
+YOUR_WEBSHARE_USER
+YOUR_WEBSHARE_PASS
 1 minute ago
 
 Working

@@ -44,10 +44,7 @@ export class VisitEngine {
       retryAttempts: 2,
       retryBackoffBase: 500,
       mode: 'http',
-<<<<<<< HEAD
       headless: true,
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       demoMode: false,
       sessionMode: false,
       screenshotOnVisit: false,
@@ -58,23 +55,34 @@ export class VisitEngine {
     this.failCount = 0;
     this.sessionCount = 0;
     this.startTime = null;
-<<<<<<< HEAD
     this.behaviorDirector = null; // AI/human behavior director (optional)
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+    this.domainRules = null; // DomainRulesManager — per-domain limits + robots.txt
+    this.observability = null; // ObservabilityHub — metrics + alerts
+    this.freeProxyFetcher = null; // FreeProxyFetcher (for stats in results)
 
     this.insertVisit = db.prepare(`
       INSERT INTO visits (visit_id, url, subdomain, proxy_host, proxy_country, proxy_city,
         status_code, latency_ms, user_agent, referrer, success, error_message, error_type,
-        mode, response_size, screenshot_path, device_type, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        mode, response_size, screenshot_path, device_type, behavior, skipped, skip_reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `);
   }
 
-<<<<<<< HEAD
   /** Wire the AI behavior director (call after construction). */
   setBehaviorDirector(director) {
     this.behaviorDirector = director;
+  }
+
+  /** Wire optional cross-cutting modules (called after construction). */
+  setDomainRules(domainRules) { this.domainRules = domainRules; }
+  setObservability(obs) { this.observability = obs; }
+  setFreeProxyFetcher(f) { this.freeProxyFetcher = f; }
+
+  /** Derive the expected proxy country from a fingerprint locale (en-GB → GB). */
+  _preferCountryForFp(fp) {
+    const locale = fp?.locale || '';
+    const m = locale.match(/-([A-Za-z]{2})$/);
+    return m ? m[1].toUpperCase() : (fp?.country || null);
   }
 
   /**
@@ -102,21 +110,6 @@ export class VisitEngine {
 
     const match = presets.find(([v]) => !major || major >= v);
     return (match || presets[presets.length - 1])[1];
-=======
-  /**
-   * Map fingerprint browser+version to a tls-client fingerprint name.
-   * tls-client supports: chrome120, chrome121, chrome123, chrome124, chrome125, chrome126, chrome131, chrome133a, firefox133, firefox135, safari17_0_0, safari17_2_1, safari18_0_0, edge101, edge106, edge122, etc.
-   */
-  _getTlsFingerprint(fp) {
-    const browser = (fp.browser || 'chrome').toLowerCase();
-    const version = parseInt((fp.version || '120').replace(/[^0-9]/g, '').slice(0, 3)) || 120;
-
-    if (browser === 'firefox') return `firefox${version}`;
-    if (browser === 'safari') return `safari${String(version).replace('.', '_').replace(/_(\d)$/, '_${1}_0')}`;
-    if (browser === 'edge') return `edge${version}`;
-    if (browser === 'chrome') return `chrome${version}`;
-    return `chrome${version}`;
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   }
 
   /**
@@ -219,7 +212,6 @@ export class VisitEngine {
         const tlsClient = await loadTlsClient();
         if (tlsClient && tlsClient.Session) {
           // --- tls-client path: real browser TLS fingerprint ---
-<<<<<<< HEAD
           // NOTE: tls-client@0.0.5 exposes Session({clientIdentifier}) +
           //       executeRequest(method, url, opts). The proxy is passed per
           //       request (with credentials) — not in the constructor.
@@ -240,17 +232,6 @@ export class VisitEngine {
             : null;
 
           const response = await session.executeRequest('GET', targetUrl, {
-=======
-          const proxyUrl = `${proxy.type === 'socks5' || proxy.type === 'socks' ? 'socks5' : 'http'}://${proxy.host}:${proxy.port}`;
-          const session = new tlsClient.Session({
-            fingerprint: this._getTlsFingerprint(fp),
-            proxy: proxyUrl,
-          });
-
-          const response = await session.execute({
-            url: targetUrl,
-            method: 'GET',
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
             headers: this._orderHeaders({
               'User-Agent': userAgent,
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -265,7 +246,6 @@ export class VisitEngine {
               'Sec-Fetch-Storage-Access': 'none',
               'Cache-Control': 'max-age=0',
               ...clientHints,
-<<<<<<< HEAD
               ...netHeaders,
               ...(referrer && { 'Referer': referrer }),
             }, fp.browser),
@@ -285,17 +265,6 @@ export class VisitEngine {
 
           // Store response cookies for session persistence
           const setCookies = response.headers?.['Set-Cookie'] || response.headers?.['set-cookie'];
-=======
-              ...(cookieHeader && { 'Cookie': cookieHeader }),
-              ...netHeaders,
-              ...(referrer && { 'Referer': referrer }),
-            }, fp.browser),
-            timeout,
-          });
-
-          // Store response cookies for session persistence
-          const setCookies = response.headers?.['set-cookie'];
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
           if (this.sessionPersistence && setCookies) {
             const domain = new URL(urlEntry.url).hostname;
             const cookies = Array.isArray(setCookies) ? setCookies : [setCookies];
@@ -303,18 +272,11 @@ export class VisitEngine {
           }
 
           const latency = Date.now() - start;
-<<<<<<< HEAD
           const responseSize = response.content?.length ||
             Buffer.byteLength(String(response.text ?? '')) ||
             parseInt(response.headers?.['content-length'] || '0', 10);
 
           if (typeof session.close === 'function') await session.close();
-=======
-          const responseSize = parseInt(response.headers?.['content-length'] || '0', 10) ||
-            (response.body ? Buffer.byteLength(String(response.body)) : 0);
-
-          await session.close();
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
           return {
             success: true,
@@ -478,26 +440,73 @@ export class VisitEngine {
         },
       };
       this._persist(result);
+      this.observability?.recordVisit(result);
       logger.info(`🧪 Demo visit #${this.visitCount}: ${urlEntry.subdomain} via ${proxy.flag}${proxy.city} (${latency}ms) [${result.deviceType}]`);
       return result;
     }
 
     // --- Real visit ---
-    const proxy = this.proxyManager.select(options.proxyStrategy || 'random');
-    if (!proxy) {
-      logger.error('No active proxy available — visit skipped');
-      return { success: false, error: 'No active proxy', visitId, timestamp: new Date().toISOString() };
-    }
-
-    const urlEntry = this.urlManager.getRandom();
+    // Caller-supplied URL/proxy win (session chains pass them per page, manual
+    // visits too) — otherwise pick randomly. Without this, multi-page sessions
+    // silently re-rolled a random proxy + URL on every page, breaking the
+    // session chain (and geo/stickiness consistency).
+    const urlEntry = options.url
+      ? {
+          url: options.url,
+          subdomain: (() => { try { return new URL(options.url).hostname; } catch { return String(options.url); } })(),
+        }
+      : this.urlManager.getRandom();
     if (!urlEntry) {
       logger.error('No active URL available — visit skipped');
       return { success: false, error: 'No active URL', visitId, timestamp: new Date().toISOString() };
     }
 
+    // Per-domain rules first (opt-out / rate limit / robots.txt) — checking
+    // before proxy selection so a skipped visit doesn't burn a proxy slot.
+    if (this.domainRules && this.domainRules.config.enabled) {
+      const chk = await this.domainRules.check(urlEntry.url);
+      if (!chk.allowed) {
+        const result = {
+          visitId, success: false, skipped: true, reason: chk.reason,
+          url: urlEntry.url, subdomain: urlEntry.subdomain,
+          retryAfterMs: chk.retryAfterMs || 0,
+          mode: this.config.mode, timestamp: new Date().toISOString(),
+        };
+        this._persist(result);
+        this.observability?.recordVisit(result);
+        logger.info(`⏭️ Skipped ${urlEntry.subdomain}: ${chk.reason}`);
+        return result;
+      }
+    }
+
     // Get persistent fingerprint
     const sessionFp = this.sessionPersistence ? await this.sessionPersistence.getOrCreateFingerprint(options.fingerprintId) : null;
     const fp = sessionFp?.profile || getRandomFingerprint();
+
+    // Geo-match: prefer a proxy whose country matches the fingerprint locale
+    // (profile ↔ proxy consistency), unless disabled via GEO_MATCH_PROXIES=0.
+    const preferCountry = this.config.geoMatchProxies === false ? null : this._preferCountryForFp(fp);
+
+    // Return-visitor stickiness: if this visit is bound to a visitor profile,
+    // reuse the profile's previously bound proxy when it's still active.
+    // Caller-supplied proxy (session chain) always wins.
+    let proxy = options.proxy || null;
+    // A caller-supplied proxy that got disabled/archived meanwhile → re-select
+    if (proxy && (!proxy.enabled || proxy.archived)) proxy = null;
+    if (!proxy && options.profileId && this.sessionManager?.profileManager) {
+      proxy = this.sessionManager.profileManager.getBoundProxy(options.profileId, this.proxyManager);
+      if (proxy) logger.info(`📌 Profile ${options.profileId} reusing bound proxy ${proxy.host}:${proxy.port}`);
+    }
+    if (!proxy) {
+      proxy = this.proxyManager.select(options.proxyStrategy || 'random', { preferCountry, geoMatch: this.config.geoMatchProxies !== false });
+    }
+    if (!proxy) {
+      logger.error('No active proxy available — visit skipped');
+      return { success: false, error: 'No active proxy', visitId, timestamp: new Date().toISOString() };
+    }
+
+    // Record the domain visit for rate limiting (attempt counts, not just success)
+    this.domainRules?.recordVisit(urlEntry.url);
 
     // Sprint 2 + 3: device-matched UA, mixed referrer (search + social), UTM params
     const deviceProfile = this.deviceManager ? this.deviceManager.getDeviceProfile() : null;
@@ -527,10 +536,7 @@ export class VisitEngine {
           proxy,
           url: finalUrl,
           userAgent,
-<<<<<<< HEAD
           headless: options.headless ?? this.config.headless,
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
           timeout: options.timeout || this.config.requestTimeout,
           sessionSeed: options.sessionSeed,
           screenshot: options.screenshot || this.config.screenshotOnVisit,
@@ -543,10 +549,8 @@ export class VisitEngine {
           fingerprint: fp,
           sessionPersistence: this.sessionPersistence,
           clientId: options.clientId,
-<<<<<<< HEAD
           behaviorDirector: this.behaviorDirector,
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+          feedback: this.detectionFeedback?.getAdjustments?.() || null,
         });
         if (!outcome.success) {
           throw new Error(outcome.error || 'Browser visit failed');
@@ -585,6 +589,7 @@ export class VisitEngine {
         timestamp: new Date().toISOString(),
       };
       this._persist(result);
+      this.observability?.recordVisit(result);
       logger.warn(
         `❌ Visit #${this.visitCount}: ${urlEntry.subdomain} via ${proxy.flag} ${proxy.city} (${latency}ms) [${classification.type}] ${classification.message}`
       );
@@ -643,18 +648,51 @@ export class VisitEngine {
       return this.executeVisit(options);
     }
 
-    const proxy = this.proxyManager.select(options.proxyStrategy || 'random');
-    if (!proxy) {
-      return { success: false, error: 'No active proxy', timestamp: new Date().toISOString() };
-    }
-
     const urlEntry = this.urlManager.getRandom();
     if (!urlEntry) {
       return { success: false, error: 'No active URL', timestamp: new Date().toISOString() };
     }
 
-    // Check for a return visitor profile (stable fingerprint, proxy affinity)
-    const returnProfile = await this.sessionManager.shouldReturnVisitor?.(proxy.country) || null;
+    // Per-domain rules (opt-out / rate limit / robots.txt)
+    if (this.domainRules && this.domainRules.config.enabled) {
+      const chk = await this.domainRules.check(urlEntry.url);
+      if (!chk.allowed) {
+        const result = {
+          success: false, skipped: true, reason: chk.reason,
+          url: urlEntry.url, subdomain: urlEntry.subdomain,
+          retryAfterMs: chk.retryAfterMs || 0, mode: 'session',
+          timestamp: new Date().toISOString(),
+        };
+        this._persist(result);
+        this.observability?.recordVisit(result);
+        return result;
+      }
+    }
+
+    // Check for a return visitor profile FIRST — a returning visitor should
+    // re-enter through their previously bound proxy (stickiness), so the
+    // proxy choice follows the profile, not the other way around.
+    const returnProfile = await this.sessionManager.shouldReturnVisitor?.(undefined) || null;
+    let proxy = null;
+    if (returnProfile?.id && this.sessionManager.profileManager) {
+      proxy = this.sessionManager.profileManager.getBoundProxy(returnProfile.id, this.proxyManager);
+      if (proxy) logger.info(`📌 Return visitor ${returnProfile.id} reusing bound proxy ${proxy.host}:${proxy.port}`);
+    }
+    if (!proxy) {
+      const fpForGeo = getRandomFingerprint();
+      const preferCountry = this.config.geoMatchProxies === false ? null : this._preferCountryForFp(fpForGeo);
+      proxy = this.proxyManager.select(options.proxyStrategy || 'random', { preferCountry, geoMatch: this.config.geoMatchProxies !== false });
+    }
+    if (!proxy) {
+      return { success: false, error: 'No active proxy', timestamp: new Date().toISOString() };
+    }
+
+    // Bind the chosen proxy to the profile so the next return visit reuses it
+    if (returnProfile?.id && this.sessionManager.profileManager?.bindProxy) {
+      await this.sessionManager.profileManager.bindProxy(returnProfile.id, proxy);
+    }
+    this.domainRules?.recordVisit(urlEntry.url);
+
     const fingerprintSeed = returnProfile?.fingerprintSeed || Math.floor(Math.random() * 1e9);
 
     const sessionResult = await this.sessionManager.executeSession(this, {
@@ -710,7 +748,10 @@ export class VisitEngine {
         result.mode || 'http',
         result.responseSize || 0,
         result.screenshotPath || null,
-        result.deviceType || null
+        result.deviceType || null,
+        result.behavior ? JSON.stringify(result.behavior) : null,
+        result.skipped ? 1 : 0,
+        result.reason || null
       );
     } catch (err) {
       logger.error(`Failed to persist visit ${result.visitId}: ${err.message}`);

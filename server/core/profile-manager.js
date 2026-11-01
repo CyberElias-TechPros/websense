@@ -22,6 +22,13 @@ export class ProfileManager {
   }
 
   async init() {
+    // Schema evolution: proxy stickiness columns (guarded, added once).
+    for (const col of [
+      'ALTER TABLE visitor_profiles ADD COLUMN proxy_host TEXT',
+      'ALTER TABLE visitor_profiles ADD COLUMN proxy_port INTEGER',
+    ]) {
+      try { this.store.db.exec(col); } catch { /* already exists */ }
+    }
     // Preload existing profiles into cache
     const stmt = this.store.db.prepare('SELECT * FROM visitor_profiles ORDER BY last_visited_at DESC LIMIT ?');
     const profiles = stmt.all(500);
@@ -29,6 +36,40 @@ export class ProfileManager {
       this.cache.set(p.id, p);
     }
     logger.info(`[ProfileManager] Loaded ${profiles.length} visitor profiles into cache`);
+  }
+
+  /**
+   * Bind a proxy to a visitor profile — a returning visitor should come back
+   * through the same egress IP (cookies/consent/identity stay consistent).
+   */
+  async bindProxy(profileId, proxy) {
+    if (!profileId || !proxy) return;
+    const profile = this.cache.get(profileId) || await this.getProfile(profileId);
+    if (!profile) return;
+    profile.proxy_host = proxy.host;
+    profile.proxy_port = proxy.port;
+    this.cache.set(profileId, profile);
+    try {
+      this.store.db.prepare(
+        'UPDATE visitor_profiles SET proxy_host = ?, proxy_port = ? WHERE id = ?'
+      ).run(proxy.host, proxy.port, profileId);
+    } catch { /* column missing on old DBs — cache still holds it */ }
+  }
+
+  /**
+   * Return the profile's bound proxy if it's still in the pool and active,
+   * otherwise null (caller falls back to normal selection and re-binds).
+   */
+  getBoundProxy(profileId, proxyManager) {
+    const profile = this.cache.get(profileId);
+    if (!profile?.proxy_host || !proxyManager) return null;
+    const bound = proxyManager.proxies.find(
+      (p) => p.host === profile.proxy_host && p.port === profile.proxy_port
+    );
+    if (!bound) return null;
+    if (!bound.enabled || bound.archived) return null;
+    if (bound.circuitOpen && bound.circuitOpenUntil > Date.now()) return null;
+    return bound;
   }
 
   async createProfile({ proxy, userAgent, fingerprintSeed, country }) {
@@ -84,13 +125,14 @@ export class ProfileManager {
 
   async shouldReturnVisitor(proxyCountry) {
     if (Math.random() * 100 > this.config.returnRate * 100) return null;
-    // Pick a profile with same country affinity if possible
-    const all = this.cache.values();
-    const matching = all.filter((p) => p.proxy_country === proxyCountry && Date.now() - p.last_visited_at < this.config.profileTTL);
-    if (matching.length > 0) {
-      return matching[Math.floor(Math.random() * matching.length)];
-    }
-    return null;
+    const all = [...this.cache.values()].filter((p) => Date.now() - p.last_visited_at < this.config.profileTTL);
+    // No country constraint (undefined) → any profile; otherwise prefer same-country
+    const matching = proxyCountry
+      ? all.filter((p) => p.proxy_country === proxyCountry)
+      : all;
+    const pool = matching.length > 0 ? matching : all;
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   async getStats() {

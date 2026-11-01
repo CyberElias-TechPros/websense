@@ -32,6 +32,7 @@ export class ProxyManager {
       consecutiveFailures: 0,
       circuitOpen: false,
       circuitOpenUntil: null,
+      archived: false, // free proxies only — archived after repeated failures
       toJSON() {
         const { username, password, ...rest } = this;
         return rest;
@@ -42,6 +43,10 @@ export class ProxyManager {
       timeout: 10000,
       circuitOpenAfter: 5,
       circuitCooldownMs: 60000,
+      // Free proxies (source === 'free') that fail this many times in a row
+      // are ARCHIVED (disabled + flagged) instead of just circuit-broken.
+      // Paid (Webshare) proxies are never archived. 0 disables.
+      archiveFreeAfterFailures: 0,
       ...healthConfig,
     };
     this._initDbStats();
@@ -51,6 +56,13 @@ export class ProxyManager {
   // Persistence bootstrap
   // -----------------------------------------------------------------------
   _initDbStats() {
+    // Schema evolution: archiving columns (added once, guarded).
+    for (const col of [
+      'ALTER TABLE proxy_stats ADD COLUMN archived INTEGER DEFAULT 0',
+      "ALTER TABLE proxy_stats ADD COLUMN archive_reason TEXT DEFAULT NULL",
+    ]) {
+      try { db.exec(col); } catch { /* column already exists */ }
+    }
     const upsert = db.prepare(`
       INSERT INTO proxy_stats (host, port, country, city, flag, enabled, status)
       VALUES (?, ?, ?, ?, ?, 1, 'unknown')
@@ -79,6 +91,8 @@ export class ProxyManager {
           p.successCount + p.failCount > 0
             ? Math.round(p.totalLatency / (p.successCount + p.failCount))
             : 0;
+        p.archived = !!row.archived;
+        if (p.archived) p.enabled = false;
       }
     }
   }
@@ -203,18 +217,49 @@ export class ProxyManager {
     return proxy;
   }
 
+  /**
+   * Active proxies in a specific country (ISO-3166 alpha-2, case-insensitive).
+   */
+  getByCountry(country) {
+    if (!country) return [];
+    const cc = String(country).toUpperCase();
+    return this.getActiveProxies().filter((p) => (p.country || '').toUpperCase() === cc);
+  }
+
+  /**
+   * Geo-match selection: prefer proxies whose country matches the visitor
+   * profile's locale country (fingerprint ↔ proxy consistency), falling back
+   * to the normal pool when none are available.
+   */
+  getGeoMatched(preferCountry) {
+    if (preferCountry) {
+      const pool = this.getByCountry(preferCountry);
+      if (pool.length > 0) {
+        const proxy = pool[Math.floor(Math.random() * pool.length)];
+        proxy.lastUsed = new Date().toISOString();
+        return proxy;
+      }
+    }
+    return this.getRandom();
+  }
+
   /** Pick a strategy by name, defaulting to random. */
-  select(strategy = 'random') {
+  select(strategy = 'random', opts = {}) {
+    // Soft geo-match: when the caller passes preferCountry (derived from the
+    // fingerprint's locale), try to honor it for the common strategies.
+    const useGeoMatch = strategy === 'geo-match' || (opts.preferCountry && opts.geoMatch !== false);
     switch (strategy) {
+      case 'geo-match':
+        return this.getGeoMatched(opts.preferCountry);
       case 'round-robin':
-        return this.getNext();
+        return useGeoMatch && opts.preferCountry ? (this.getGeoMatched(opts.preferCountry) || this.getNext()) : this.getNext();
       case 'weighted':
-        return this.getWeighted();
+        return useGeoMatch && opts.preferCountry ? (this.getGeoMatched(opts.preferCountry) || this.getWeighted()) : this.getWeighted();
       case 'geo':
-        return this.getGeoSpread();
+        return useGeoMatch && opts.preferCountry ? (this.getGeoMatched(opts.preferCountry) || this.getGeoSpread()) : this.getGeoSpread();
       case 'random':
       default:
-        return this.getRandom();
+        return useGeoMatch && opts.preferCountry ? this.getGeoMatched(opts.preferCountry) : this.getRandom();
     }
   }
 
@@ -252,6 +297,20 @@ export class ProxyManager {
       logger.warn(
         `Circuit breaker opened for ${proxy.id} (cooldown ${this.healthConfig.circuitCooldownMs}ms)`
       );
+    }
+
+    // Free proxies that keep failing get ARCHIVED (removed from rotation but
+    // kept in the pool, re-activatable by the free-proxy fetcher if they show
+    // up in a fresh list). Paid/Webshare proxies are NEVER archived — they
+    // only get the circuit breaker above.
+    const archiveAfter = this.healthConfig.archiveFreeAfterFailures || 0;
+    if (
+      archiveAfter > 0 &&
+      proxy.source === 'free' &&
+      proxy.consecutiveFailures >= archiveAfter &&
+      !proxy.archived
+    ) {
+      this.archiveProxy(proxy.host, `consecutive_failures:${proxy.consecutiveFailures}`);
     }
 
     db.prepare(`
@@ -333,12 +392,48 @@ export class ProxyManager {
     }
   }
 
-  async healthCheckAll() {
-    const results = await Promise.allSettled(
-      this.proxies.map((p) => this.healthCheck(p))
-    );
+  /** Concurrency-limited map (keeps 5k-proxy health sweeps from melting the CPU/sockets). */
+  async _mapLimit(items, limit, fn) {
+    const results = new Array(items.length);
+    let idx = 0;
+    const worker = async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        try {
+          results[i] = { status: 'fulfilled', value: await fn(items[i], i) };
+        } catch (e) {
+          results[i] = { status: 'rejected', reason: e };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+    return results;
+  }
+
+  /** Probe a rotating window of the pool (used by the background loop). */
+  async healthCheckBatch(batchSize = 100, concurrency = 25) {
+    const candidates = this.proxies.filter((p) => !p.archived);
+    if (candidates.length === 0) return [];
+    this._healthWindow = this._healthWindow || 0;
+    const slice = [];
+    for (let i = 0; i < Math.min(batchSize, candidates.length); i++) {
+      slice.push(candidates[(this._healthWindow + i) % candidates.length]);
+    }
+    this._healthWindow = (this._healthWindow + slice.length) % candidates.length;
+    const results = await this._mapLimit(slice, concurrency, (p) => this.healthCheck(p));
     return results.map((r, i) => ({
-      proxy: this.proxies[i].id,
+      proxy: slice[i].id,
+      healthy: r.status === 'fulfilled' && r.value?.healthy,
+      ...(r.status === 'fulfilled' ? r.value : { error: r.reason?.message }),
+    }));
+  }
+
+  async healthCheckAll(concurrency = 25) {
+    // Archived proxies are out of rotation — no point probing them.
+    const targets = this.proxies.filter((p) => !p.archived);
+    const results = await this._mapLimit(targets, concurrency, (p) => this.healthCheck(p));
+    return results.map((r, i) => ({
+      proxy: targets[i].id,
       healthy: r.status === 'fulfilled' && r.value?.healthy,
       ...(r.status === 'fulfilled' ? r.value : { error: r.reason?.message }),
     }));
@@ -359,7 +454,6 @@ export class ProxyManager {
     return proxy;
   }
 
-<<<<<<< HEAD
   addProxy({ host, port, country, city, flag, username, password, type = 'http', source = 'manual' }) {
     if (this.proxies.some((p) => p.host === host && p.port === port)) return null;
     const proxy = {
@@ -372,18 +466,12 @@ export class ProxyManager {
       source,
       username: username !== undefined && username !== '' ? username : null,
       password: password !== undefined && password !== '' ? password : null,
-=======
-  addProxy({ host, port, country, city, flag, username, password }) {
-    if (this.proxies.some((p) => p.host === host && p.port === port)) return null;
-    const proxy = {
-      host, port, country, city, flag: flag || '🌐',
-      username: username || 'hmxpvtyv', password: password || 's56i3b0mmjwv',
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       id: `${host}:${port}`,
       enabled: true, status: 'unknown',
       successCount: 0, failCount: 0, totalLatency: 0, avgLatency: 0,
       lastUsed: null, lastChecked: null,
       consecutiveFailures: 0, circuitOpen: false, circuitOpenUntil: null,
+      archived: false,
     };
     this.proxies.push(proxy);
     try {
@@ -403,6 +491,42 @@ export class ProxyManager {
     return true;
   }
 
+  /**
+   * Archive a proxy: keep it in the pool but out of rotation (enabled=false,
+   * archived=1). Used for free proxies after repeated failures. Paid proxies
+   * are never archived (recordFailure guards by source === 'free').
+   */
+  archiveProxy(host, reason = 'manual') {
+    const proxy = this.proxies.find((p) => p.host === host);
+    if (!proxy) return null;
+    proxy.archived = true;
+    proxy.enabled = false;
+    proxy.status = 'archived';
+    proxy.circuitOpen = false;
+    db.prepare(`
+      UPDATE proxy_stats SET archived = 1, enabled = 0, status = 'archived',
+        archive_reason = ?, last_used = datetime('now') WHERE host = ?
+    `).run(reason, host);
+    logger.warn(`📦 Archived proxy ${proxy.id} (${reason}) — kept in pool, out of rotation`);
+    return proxy;
+  }
+
+  /** Re-activate an archived proxy (e.g. it showed up in a fresh free list). */
+  unarchiveProxy(host) {
+    const proxy = this.proxies.find((p) => p.host === host);
+    if (!proxy || !proxy.archived) return null;
+    proxy.archived = false;
+    proxy.enabled = true;
+    proxy.status = 'unknown';
+    proxy.consecutiveFailures = 0;
+    db.prepare(`
+      UPDATE proxy_stats SET archived = 0, enabled = 1, status = 'unknown',
+        archive_reason = NULL WHERE host = ?
+    `).run(host);
+    logger.info(`♻️ Un-archived proxy ${proxy.id}`);
+    return proxy;
+  }
+
   getAll() {
     return this.proxies.map((p) => ({
       host: p.host,
@@ -410,11 +534,8 @@ export class ProxyManager {
       country: p.country,
       city: p.city,
       flag: p.flag,
-<<<<<<< HEAD
       type: p.type || 'http',
       source: p.source || 'webshare-legacy',
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       enabled: p.enabled,
       status: p.status,
       successCount: p.successCount,
@@ -427,6 +548,7 @@ export class ProxyManager {
       lastUsed: p.lastUsed,
       lastChecked: p.lastChecked,
       circuitOpen: p.circuitOpen,
+      archived: !!p.archived,
     }));
   }
 
@@ -440,6 +562,7 @@ export class ProxyManager {
       healthy: this.proxies.filter((p) => p.status === 'healthy').length,
       unhealthy: this.proxies.filter((p) => p.status === 'unhealthy').length,
       circuitOpen: this.proxies.filter((p) => p.circuitOpen).length,
+      archived: this.proxies.filter((p) => p.archived).length,
       countries: [...new Set(this.proxies.map((p) => p.country))].length,
       active: active.length,
     };

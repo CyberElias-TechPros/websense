@@ -52,9 +52,11 @@ function clamp(v, lo, hi, fallback) {
 /**
  * Deterministic heuristic plan from a session seed + URL + profile.
  * Same visitor on same page → same persona tendency (returning visitors act
- * consistently, like real people do).
+ * consistently, like real people do). When the host recently produced
+ * detection signals, the plan shifts to a cautious profile (low click intent,
+ * longer pauses) — the heuristic side of the feedback loop.
  */
-function heuristicPlan(seed, url, profile, pageStats = {}) {
+function heuristicPlan(seed, url, profile, pageStats = {}, caution = {}) {
   const rand = (() => {
     let a = hashStr(`${seed}|${new URL(url).hostname}`);
     return function () {
@@ -76,18 +78,23 @@ function heuristicPlan(seed, url, profile, pageStats = {}) {
   // Mobile users scroll faster, read less; desktop readers read more
   const deviceScale = profile?.isMobile ? 0.8 : 1.0;
 
+  // Feedback loop: host recently flagged → act cautious (less clicking, more
+  // lingering); engine slowed down by detection feedback → longer pauses.
+  const clickFactor = caution.recentDetections > 0 ? 0.4 : 1.0;
+  const pauseBoost = Math.max(1, caution.slowdownFactor || 1);
+
   return {
     source: 'heuristic',
     persona: persona.name,
-    description: `Behavior plan (heuristic persona)`,
+    description: `Behavior plan (heuristic persona${caution.recentDetections > 0 ? ', cautious — recent detections on host' : ''})`,
     dwellScale: clamp(persona.dwellScale * deviceScale * (0.85 + rand() * 0.3), 0.3, 3.0),
     scroll: {
       steps: Math.round(clamp(persona.scrollSteps * deviceScale, 1, 14)),
-      depth: clamp(persona.scrollDepth, 0.15, 1.0),
+      depth: clamp(persona.scrollDepth * (caution.recentDetections > 0 ? 0.7 : 1.0), 0.15, 1.0),
     },
     hover: { intensity: clamp(persona.hover, 0.1, 1.0) },
-    clickIntent: clamp(persona.clickIntent, 0, 0.8),
-    pauseScale: clamp(persona.pauseScale, 0.4, 2.5),
+    clickIntent: clamp(persona.clickIntent * clickFactor, 0, 0.8),
+    pauseScale: clamp(persona.pauseScale * pauseBoost, 0.4, 2.5),
     createdAt: Date.now(),
   };
 }
@@ -95,11 +102,17 @@ function heuristicPlan(seed, url, profile, pageStats = {}) {
 // ---------------------------------------------------------------------------
 // LLM prompt → plan
 // ---------------------------------------------------------------------------
-function buildPrompt(url, profile, pageStats) {
+function buildPrompt(url, profile, pageStats, context = {}) {
+  const caution = context.recentDetections > 0
+    ? `\nSite context: this host showed ${context.recentDetections} detection signal(s) (CAPTCHA/403/429) in the last hour — be EXTRA cautious: lower clickIntent, longer pauses, less aggressive scrolling, do not click through.`
+    : '';
+  const slowdown = context.slowdownFactor > 1
+    ? `\nEngine context: detection feedback slowed the engine ${context.slowdownFactor}x — this visitor should linger (higher pauseScale) and click less.`
+    : '';
   return `You are a user-behavior simulation engine. Given this page and visitor, output ONLY a JSON object (no prose, no markdown) describing realistic human browsing behavior.
 
 Page: title="${(pageStats.title || '').slice(0, 80)}", words=${pageStats.words || 0}, links=${pageStats.links || 0}, images=${pageStats.images || 0}, video=${pageStats.hasVideo ? 'yes' : 'no'}
-Visitor device: ${profile?.isMobile ? (profile?.isTablet ? 'tablet' : 'mobile') : 'desktop'}, locale=${profile?.locale || 'en-US'}
+Visitor device: ${profile?.isMobile ? (profile?.isTablet ? 'tablet' : 'mobile') : 'desktop'}, locale=${profile?.locale || 'en-US'}${caution}${slowdown}
 
 JSON schema:
 {"persona":"one_or_two_words","dwellScale":0.3-3.0,"scroll":{"steps":1-14,"depth":0.15-1.0},"hover":{"intensity":0.1-1.0},"clickIntent":0-0.8,"pauseScale":0.4-2.5,"reason":"one short sentence"}
@@ -127,6 +140,32 @@ export class AIBehaviorDirector {
     this.activeProvider = null; // 'omniroute' | 'ollama' | 'openai' | 'heuristic' | null
     this.cache = new Map(); // key → {plan, expires}
     this.stats = { llmPlans: 0, heuristicPlans: 0, cacheHits: 0, llmErrors: 0, lastProvider: null };
+    // Feedback loop: recent visit outcomes per host (ring buffer, max 500).
+    this.outcomes = []; // { host, detected, reason, ts }
+  }
+
+  /**
+   * Record the outcome of a visit on a host. Detection signals (CAPTCHA /
+   * 403 / 429 / blocked) make subsequent plans on that host more cautious —
+   * for both the LLM prompt and the heuristic fallback.
+   */
+  recordOutcome({ url, detected = false, reason = '' }) {
+    try {
+      const host = new URL(url).hostname;
+      this.outcomes.push({ host, detected: !!detected, reason: String(reason || '').slice(0, 120), ts: Date.now() });
+      if (this.outcomes.length > 500) this.outcomes.splice(0, this.outcomes.length - 500);
+    } catch { /* invalid url — ignore */ }
+  }
+
+  /** Recent detection count for a host (last hour). */
+  recentDetectionsFor(url) {
+    try {
+      const host = new URL(url).hostname;
+      const cutoff = Date.now() - 3600_000;
+      return this.outcomes.filter((o) => o.host === host && o.detected && o.ts > cutoff).length;
+    } catch {
+      return 0;
+    }
   }
 
   // -- Provider probing ---------------------------------------------------
@@ -236,13 +275,21 @@ export class AIBehaviorDirector {
   /**
    * Build the behavior plan for one visit. Always resolves (never throws,
    * never blocks beyond the LLM timeout) — heuristic on any failure.
+   * `feedback` carries detection-feedback adjustments (slowdownFactor etc.)
+   * so plans adapt when the engine is being flagged.
    */
-  async buildPlan({ url, profile, pageStats = {}, seed }) {
-    if (!this.config.enabled || !url) return heuristicPlan(seed || 0, url || 'about:blank', profile, pageStats);
+  async buildPlan({ url, profile, pageStats = {}, seed, feedback = null }) {
+    // Feedback-loop context: recent detections on this host + engine slowdown
+    const caution = {
+      recentDetections: url ? this.recentDetectionsFor(url) : 0,
+      slowdownFactor: feedback?.slowdownFactor || 1,
+    };
+    if (!this.config.enabled || !url) return heuristicPlan(seed || 0, url || 'about:blank', profile, pageStats, caution);
 
     // Cache: same page+persona-window reuses the plan (a returning visitor
-    // keeps their habit — and we don't burn LLM tokens every visit)
-    const cacheKey = `${hashStr(String(seed))}|${new URL(url).host}|${profile?.isMobile ? 'm' : 'd'}`;
+    // keeps their habit — and we don't burn LLM tokens every visit).
+    // Note: cache key excludes caution so flagged hosts get fresh cautious plans.
+    const cacheKey = `${hashStr(String(seed))}|${new URL(url).host}|${profile?.isMobile ? 'm' : 'd'}|${caution.recentDetections > 0 ? 'c' : 'n'}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       this.stats.cacheHits++;
@@ -255,20 +302,27 @@ export class AIBehaviorDirector {
     if (this.activeProvider === 'omniroute' || this.activeProvider === 'openai') {
       try {
         const out = await this._openAiChat(
-          [{ role: 'user', content: buildPrompt(url, profile, pageStats) }],
+          [{ role: 'user', content: buildPrompt(url, profile, pageStats, caution) }],
           this.config.timeoutMs
         );
         plan = this._parsePlan(out, seed, url, profile, pageStats);
-        if (plan) this.stats.llmPlans++;
+        if (plan) {
+          this.stats.llmPlans++;
+          // LLM told to be cautious → clamp clickIntent down as a safety net
+          if (caution.recentDetections > 0) plan.clickIntent = clamp(plan.clickIntent * 0.5, 0, 0.8);
+        }
       } catch (e) {
         this.stats.llmErrors++;
         logger.warn(`AI behavior plan via ${this.activeProvider} failed, falling back to heuristic: ${e.message}`);
       }
     } else if (this.activeProvider === 'ollama' && this.aiIntegration) {
       try {
-        const out = await this.aiIntegration.generate(buildPrompt(url, profile, pageStats), null, this.config.timeoutMs);
+        const out = await this.aiIntegration.generate(buildPrompt(url, profile, pageStats, caution), null, this.config.timeoutMs);
         plan = this._parsePlan(out, seed, url, profile, pageStats);
-        if (plan) this.stats.llmPlans++;
+        if (plan) {
+          this.stats.llmPlans++;
+          if (caution.recentDetections > 0) plan.clickIntent = clamp(plan.clickIntent * 0.5, 0, 0.8);
+        }
       } catch (e) {
         this.stats.llmErrors++;
         logger.warn(`AI behavior plan via ollama failed, falling back to heuristic: ${e.message}`);
@@ -276,7 +330,7 @@ export class AIBehaviorDirector {
     }
 
     if (!plan) {
-      plan = heuristicPlan(seed, url, profile, pageStats);
+      plan = heuristicPlan(seed, url, profile, pageStats, caution);
       this.stats.heuristicPlans++;
     }
     this.stats.lastProvider = plan.source;
@@ -308,6 +362,10 @@ export class AIBehaviorDirector {
       models: this.models || [],
       stats: { ...this.stats },
       cacheSize: this.cache.size,
+      feedback: {
+        outcomesTracked: this.outcomes.length,
+        detectionsLastHour: this.outcomes.filter((o) => o.detected && o.ts > Date.now() - 3600_000).length,
+      },
     };
   }
 }

@@ -2,13 +2,14 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Link2, History,
-  BarChart3, Settings, ScrollText, Globe, Wifi, WifiOff, Wand2, TrendingUp, Layers, Bell, HeartPulse,
+  BarChart3, Settings, ScrollText, Globe, Wifi, WifiOff, Wand2, TrendingUp, Layers, Bell, HeartPulse, Brain,
 } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/wizard', label: 'Setup Wizard', icon: Wand2 },
   { path: '/proxy-pool', label: 'Proxy Pool', icon: Layers },
+  { path: '/intelligence', label: 'AI & Proxy Intel', icon: Brain },
   { path: '/proxies', label: 'Proxies', icon: Shield },
   { path: '/urls', label: 'URLs', icon: Link2 },
   { path: '/history', label: 'History', icon: History },

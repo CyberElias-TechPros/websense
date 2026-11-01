@@ -4,10 +4,22 @@ import axios from 'axios';
 // client is served by the backend (same origin), so relative URLs work.
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+// Optional API token when the backend runs with API_TOKEN set.
+// Build-time: VITE_API_TOKEN; runtime fallback: localStorage websense_api_token.
+const getApiToken = () =>
+  import.meta.env.VITE_API_TOKEN || localStorage.getItem('websense_api_token') || '';
+
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
+});
+
+// Attach Bearer token to every request when one is configured
+api.interceptors.request.use((config) => {
+  const token = getApiToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
 });
 
 // -------------------------------------------------------------------------
@@ -162,5 +174,38 @@ export const getHealthCheckerStats = () => api.get('/health-checker/stats');
 export const getHealthCheckerResults = (limit) => api.get('/health-checker/results', { params: { limit } });
 export const startHealthChecker = () => api.post('/health-checker/start');
 export const stopHealthChecker = () => api.post('/health-checker/stop');
+
+// -------------------------------------------------------------------------
+// AI behavior director (OmniRoute / Ollama / heuristic)
+// -------------------------------------------------------------------------
+export const getAIDirectorStatus = () => api.get('/ai/director/status');
+export const recheckAIDirector = () => api.post('/ai/director/recheck');
+export const previewAIDirectorPlan = (payload) => api.post('/ai/director/plan', payload);
+
+// -------------------------------------------------------------------------
+// Free proxy pool (GitHub sources next to paid Webshare)
+// -------------------------------------------------------------------------
+export const getFreeProxyStats = () => api.get('/proxies/free/stats');
+export const refreshFreeProxies = () => api.post('/proxies/free/refresh');
+export const updateFreeProxyConfig = (conf) => api.put('/proxies/free/config', conf);
+export const getProxySources = () => api.get('/proxies/sources');
+
+// -------------------------------------------------------------------------
+// Observability — metrics & alerts
+// -------------------------------------------------------------------------
+export const getMetrics = () => api.get('/metrics');
+export const getAlerts = () => api.get('/alerts');
+export const ackAlert = (id) => api.post(`/alerts/${id}/ack`);
+
+// -------------------------------------------------------------------------
+// Domain rules — opt-outs, per-domain rate limits, robots.txt
+// -------------------------------------------------------------------------
+export const getDomainRules = () => api.get('/domain-rules');
+export const updateDomainRules = (patch) => api.patch('/domain-rules', patch);
+export const setDomainRule = (domain, rule) => api.put(`/domain-rules/${encodeURIComponent(domain)}`, rule);
+export const addDomainOptOut = (domain) => api.post('/domain-rules/opt-out', { domain });
+export const removeDomainOptOut = (domain) => api.delete(`/domain-rules/opt-out/${encodeURIComponent(domain)}`);
+export const refreshRobots = (domain) => api.post(`/domain-rules/${encodeURIComponent(domain)}/robots/refresh`);
+export const checkDomainRule = (domain, url) => api.get(`/domain-rules/${encodeURIComponent(domain)}/check`, { params: { url } });
 
 export default api;

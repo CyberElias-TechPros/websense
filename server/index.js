@@ -71,11 +71,11 @@ import PluginSystem from './core/plugin-system.js';
 import CliTool from './core/cli-tool.js';
 import DesktopAppManager from './core/desktop-app.js';
 import SessionPersistence from './core/session-persistence.js';
-<<<<<<< HEAD
 import FreeProxyFetcher from './core/free-proxy-fetcher.js';
 import AIBehaviorDirector from './core/ai-behavior-director.js';
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+import DomainRulesManager from './core/domain-rules.js';
+import ObservabilityHub from './core/observability.js';
+import { getRandomFingerprint } from './core/user-agents.js';
 import createRoutes from './api/routes.js';
 import { notFound, errorHandler } from './middleware/error-handler.js';
 import logger from './utils/logger.js';
@@ -91,6 +91,18 @@ const server = createServer(app);
 const io = new SocketIO(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
 });
+
+// Socket auth when API_TOKEN is set (see REST guard above)
+const API_TOKEN = process.env.API_TOKEN || '';
+if (API_TOKEN) {
+  io.use((socket, next) => {
+    const t = socket.handshake.auth?.token
+      || (socket.handshake.headers.authorization || '').replace(/^Bearer /i, '')
+      || socket.handshake.query?.token;
+    if (t === API_TOKEN) return next();
+    return next(new Error('unauthorized'));
+  });
+}
 
 // --- Security & middleware stack ---
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -111,6 +123,18 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api', limiter);
+
+// Optional API token auth (API_TOKEN env). Off by default for local use; set it
+// when exposing the dashboard beyond localhost. Applies to /api AND socket.io.
+if (API_TOKEN) {
+  app.use('/api', (req, res, next) => {
+    const h = req.headers.authorization || '';
+    const bearer = h.startsWith('Bearer ') ? h.slice(7) : '';
+    if (bearer === API_TOKEN || req.query.token === API_TOKEN) return next();
+    return res.status(401).json({ error: 'Unauthorized — set API_TOKEN and send it as a Bearer token' });
+  });
+  logger.info('🔒 API token auth enabled (API_TOKEN)');
+}
 
 // ---------------------------------------------------------------------------
 // Core engine bootstrap
@@ -165,7 +189,6 @@ const periodicHealthChecker = new PeriodicHealthChecker({
 });
 periodicHealthChecker.setDependencies(proxyManager, proxyHealthMonitor, proxyPerformanceTracker, notificationManager, proxyRotationScheduler, proxyIntelligenceAnalyzer);
 const aiIntegration = new AIIntegration(config.ai);
-<<<<<<< HEAD
 const behaviorDirector = new AIBehaviorDirector({
   aiIntegration,
   config: config.aiBehavior,
@@ -177,15 +200,25 @@ behaviorDirector.init().catch(() => {});
 setInterval(() => { behaviorDirector.init().catch(() => {}); }, 10 * 60 * 1000);
 const freeProxyFetcher = new FreeProxyFetcher(proxyManager, config.freeProxies);
 freeProxyFetcher.startAutoRefresh(); // delayed initial fetch + periodic refresh
+// Observability hub — metrics + alerts (fed by refreshes, visits, AI stats)
+const observability = new ObservabilityHub(config.observability);
+freeProxyFetcher.setObservability(observability);
+observability.onAlert = (alert) => {
+  io.emit('alert', alert); // real-time to the dashboard
+};
+// Per-target-domain rules — opt-outs, rate limits, robots.txt respect
+const domainRules = new DomainRulesManager(config.domainRules);
 const urlManager = new UrlManager(TARGET_URLS);
 const sessionPersistence = new SessionPersistence(config.sessionPersistence);
 const visitEngine = new VisitEngine(proxyManager, urlManager, config.engine, null, sessionPersistence);
 visitEngine.setBehaviorDirector(behaviorDirector); // AI-directed human mannerisms
-=======
-const urlManager = new UrlManager(TARGET_URLS);
-const sessionPersistence = new SessionPersistence(config.sessionPersistence);
-const visitEngine = new VisitEngine(proxyManager, urlManager, config.engine, null, sessionPersistence);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+visitEngine.setDomainRules(domainRules);
+visitEngine.setObservability(observability);
+visitEngine.setFreeProxyFetcher(freeProxyFetcher);
+// Warn once if paid-proxy credentials are not configured (env-only now)
+if (!config.proxyAuth.username || !config.proxyAuth.password) {
+  logger.warn('⚠️ PROXY_USERNAME/PROXY_PASSWORD not set — paid Webshare proxies will fail auth (set them in server/.env)');
+}
 const profileManager = new ProfileManager({ db }, config.session);
 const sessionManager = new SessionManager(config.session, profileManager);
 const utmManager = new UtmManager(config.utm);
@@ -301,11 +334,7 @@ logger.info(`🔗 Loaded ${TARGET_URLS.length} target URLs`);
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
-<<<<<<< HEAD
-app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector));
-=======
-app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker));
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector, domainRules, observability));
 
 // --- Health check endpoint ---
 app.get('/health', (req, res) =>
@@ -340,14 +369,51 @@ io.on('connection', (socket) => {
 });
 
 // ---------------------------------------------------------------------------
-// Periodic health checks + auto-start
+// Periodic health checks + observability tick + auto-start
 // ---------------------------------------------------------------------------
 if (config.healthCheck.interval > 0) {
+  // Batched rotating window (not the whole pool at once — with thousands of
+  // free proxies a full sweep every interval would saturate sockets/CPU).
   setInterval(() => {
-    proxyManager.healthCheckAll().catch((err) =>
-      logger.warn(`Background health check failed: ${err.message}`)
-    );
+    proxyManager.healthCheckBatch(config.healthCheck.batchSize || 100, config.healthCheck.batchConcurrency || 25)
+      .catch((err) => logger.warn(`Background health check failed: ${err.message}`));
   }, config.healthCheck.interval);
+}
+
+// Pre-warm the 10k fingerprint pool in the background so the first real visit
+// doesn't pay the generation cost.
+setTimeout(() => {
+  try {
+    getRandomFingerprint();
+    logger.info('🫛 Fingerprint pool pre-warmed');
+  } catch { /* optional */ }
+}, 500);
+
+// Daily DB cleanup (visits older than DB_CLEANUP_DAYS), once at boot + daily.
+function runDbCleanup() {
+  const days = config.database?.cleanupDays || 0;
+  if (!days || days <= 0) return;
+  try {
+    const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+    const res = db.prepare('DELETE FROM visits WHERE created_at < ?').run(cutoff);
+    if (res.changes > 0) logger.info(`🧹 DB cleanup: removed ${res.changes} visits older than ${days}d`);
+  } catch (e) {
+    logger.warn(`DB cleanup failed: ${e.message}`);
+  }
+}
+setTimeout(runDbCleanup, 60_000);
+setInterval(runDbCleanup, 24 * 3600_000);
+
+// Observability tick (every 60s): AI director plan-source stats (detects LLM
+// gateway outages via heuristic fallback rate) + detection-signal rate.
+if (config.observability?.enabled !== false) {
+  setInterval(() => {
+    try {
+      observability.recordAIStats(behaviorDirector.getStatus().stats);
+      const detStats = detectionFeedback.getStats();
+      observability.recordDetectionSignals(detStats.recentSignalCount || 0);
+    } catch { /* noop */ }
+  }, 60_000);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import React, { useState, useEffect, useCallback } from 'react';
-=======
-import React, { useState, useCallback } from 'react';
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 import {
   Activity, CheckCircle2, Shield, Clock, Zap, Globe, TrendingUp,
 } from 'lucide-react';
@@ -27,7 +23,6 @@ export default function Dashboard({ engineState, stats, liveVisits, connected })
     } catch { /* noop */ }
   }, []);
 
-<<<<<<< HEAD
   // Poll proxy health every 30s (useEffect, not useState: App.jsx remounts
   // this page via `key={location.pathname}`, so the interval must be cleaned
   // up or every navigation leaks another timer).
@@ -36,13 +31,6 @@ export default function Dashboard({ engineState, stats, liveVisits, connected })
     const interval = setInterval(loadProxies, 30000);
     return () => clearInterval(interval);
   }, [loadProxies]);
-=======
-  useState(() => {
-    loadProxies();
-    const interval = setInterval(loadProxies, 30000);
-    return () => clearInterval(interval);
-  });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
   const handleStart = useCallback(async () => {
     setLoading(true);

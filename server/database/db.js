@@ -115,6 +115,9 @@ function addColumnIfMissing(table, column, type) {
 }
 addColumnIfMissing('visits', 'device_type', 'TEXT');
 addColumnIfMissing('visits', 'screenshot_path', 'TEXT');
+addColumnIfMissing('visits', 'behavior', 'TEXT');       // AI behavior plan JSON
+addColumnIfMissing('visits', 'skipped', 'INTEGER DEFAULT 0'); // domain-rule skip
+addColumnIfMissing('visits', 'skip_reason', 'TEXT');
 
 // ---------------------------------------------------------------------------
 // System config helpers (persisted key/value overrides, e.g. UI settings)

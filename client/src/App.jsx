@@ -11,6 +11,7 @@ import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import ProxyPool from './pages/ProxyPool';
 import Notifications from './pages/Notifications';
 import HealthChecker from './pages/HealthChecker';
+import Intelligence from './pages/Intelligence';
 import Settings from './pages/Settings';
 import Logs from './pages/Logs';
 import Wizard from './pages/Wizard';
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/proxy-pool" element={<ProxyPool />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/health-checker" element={<HealthChecker />} />
+          <Route path="/intelligence" element={<Intelligence />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/wizard" element={<Wizard />} />

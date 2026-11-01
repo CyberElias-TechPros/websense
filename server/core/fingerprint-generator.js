@@ -362,7 +362,6 @@ export function generateFingerprintPool(targetCount = 2000) {
   const profiles = [];
   const rand = mulberry32(Date.now());
 
-<<<<<<< HEAD
   // Section budgets. The desktop builders below used to guard with
   // `profiles.length < targetCount` and therefore consumed the ENTIRE pool
   // before the Android/iOS/iPad sections ever ran — the "2,000 profiles"
@@ -379,11 +378,6 @@ export function generateFingerprintPool(targetCount = 2000) {
   // (Previously each builder looped until the SHARED desktopBudget was
   // full, so the first builders starved Edge/Firefox/Safari entirely.)
   for (let i = 0; i < Math.floor(desktopBudget * 0.30) && profiles.length < desktopBudget; i++) {
-=======
-  // ── Chrome on Windows (desktop) ─────────────────────────────────────────
-  const chromeWinScreens = DESKTOP_SCREENS.slice(0, 15);
-  for (let i = 0; i < targetCount / 4 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, CHROME_VERSIONS);
     const screen = pick(rand, chromeWinScreens);
     const gpuCategory = pick(rand, ['nvidia', 'nvidia', 'nvidia', 'amd', 'amd', 'intel', 'intel', 'intel']);
@@ -418,12 +412,8 @@ export function generateFingerprintPool(targetCount = 2000) {
 
   // ── Chrome on macOS (desktop) ───────────────────────────────────────────
   const chromeMacScreens = DESKTOP_SCREENS.filter(s => s.w >= 1280 && s.h >= 800);
-<<<<<<< HEAD
   // quota: 15% of desktop budget
   for (let i = 0; i < Math.floor(desktopBudget * 0.15) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 5 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, CHROME_VERSIONS);
     const screen = pick(rand, chromeMacScreens);
     const gpu = pick(rand, GPU_DB.apple);
@@ -456,12 +446,8 @@ export function generateFingerprintPool(targetCount = 2000) {
   }
 
   // ── Chrome on Linux (desktop) ───────────────────────────────────────────
-<<<<<<< HEAD
   // quota: 8%
   for (let i = 0; i < Math.floor(desktopBudget * 0.08) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 8 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, CHROME_VERSIONS);
     const screen = pick(rand, DESKTOP_SCREENS.slice(0, 10));
     const gpuCategory = pick(rand, ['nvidia', 'amd', 'intel']);
@@ -498,12 +484,8 @@ export function generateFingerprintPool(targetCount = 2000) {
   }
 
   // ── Edge on Windows (desktop) ───────────────────────────────────────────
-<<<<<<< HEAD
   // quota: 10%
   for (let i = 0; i < Math.floor(desktopBudget * 0.10) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 10 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, EDGE_VERSIONS);
     const screen = pick(rand, DESKTOP_SCREENS.slice(0, 12));
     const gpuCategory = pick(rand, ['nvidia', 'amd', 'intel']);
@@ -537,12 +519,8 @@ export function generateFingerprintPool(targetCount = 2000) {
   }
 
   // ── Firefox on Windows (desktop) ─────────────────────────────────────────
-<<<<<<< HEAD
   // quota: 12%
   for (let i = 0; i < Math.floor(desktopBudget * 0.12) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 8 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, FIREFOX_VERSIONS);
     const screen = pick(rand, DESKTOP_SCREENS.slice(0, 12));
     const gpuCategory = pick(rand, ['nvidia', 'amd', 'intel']);
@@ -572,12 +550,8 @@ export function generateFingerprintPool(targetCount = 2000) {
   }
 
   // ── Firefox on macOS (desktop) ───────────────────────────────────────────
-<<<<<<< HEAD
   // quota: 7%
   for (let i = 0; i < Math.floor(desktopBudget * 0.07) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 12 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, FIREFOX_VERSIONS);
     const screen = pick(rand, chromeMacScreens);
     const gpu = pick(rand, GPU_DB.apple);
@@ -606,12 +580,8 @@ export function generateFingerprintPool(targetCount = 2000) {
   }
 
   // ── Firefox on Linux (desktop) ───────────────────────────────────────────
-<<<<<<< HEAD
   // quota: 5%
   for (let i = 0; i < Math.floor(desktopBudget * 0.05) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 12 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, FIREFOX_VERSIONS);
     const screen = pick(rand, DESKTOP_SCREENS.slice(0, 10));
     const gpuCategory = pick(rand, ['nvidia', 'amd', 'intel']);
@@ -641,12 +611,8 @@ export function generateFingerprintPool(targetCount = 2000) {
   }
 
   // ── Safari on macOS (desktop) ───────────────────────────────────────────
-<<<<<<< HEAD
   // quota: 13% (sums 0.30+0.15+0.08+0.10+0.12+0.07+0.05+0.13 = 1.00)
   for (let i = 0; i < Math.floor(desktopBudget * 0.13) && profiles.length < desktopBudget; i++) {
-=======
-  for (let i = 0; i < targetCount / 8 && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const version = pick(rand, SAFARI_VERSIONS);
     const screen = pick(rand, chromeMacScreens);
     const gpu = pick(rand, GPU_DB.apple);
@@ -676,13 +642,8 @@ export function generateFingerprintPool(targetCount = 2000) {
 
   // ── Chrome on Android (mobile) ───────────────────────────────────────────
   for (const device of ANDROID_DEVICES) {
-<<<<<<< HEAD
     const numVariants = Math.max(1, Math.floor(androidBudget / ANDROID_DEVICES.length));
     for (let i = 0; i < numVariants && profiles.length < desktopBudget + androidBudget; i++) {
-=======
-    const numVariants = Math.max(1, Math.floor(targetCount / ANDROID_DEVICES.length));
-    for (let i = 0; i < numVariants && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       const version = pick(rand, CHROME_MOBILE_VERSIONS);
       const locale = pick(rand, LOCALES.filter(l => ['en', 'es', 'de', 'fr', 'ja', 'ko', 'zh', 'ar', 'pt'].includes(l.lang)));
       const screen = { w: device.screen[0], h: device.screen[1] };
@@ -717,13 +678,8 @@ export function generateFingerprintPool(targetCount = 2000) {
 
   // ── Safari on iOS (mobile) ───────────────────────────────────────────────
   for (const device of IOS_DEVICES) {
-<<<<<<< HEAD
     const numVariants = Math.max(1, Math.floor(iphoneBudget / IOS_DEVICES.length / 2));
     for (let i = 0; i < numVariants && profiles.length < desktopBudget + androidBudget + iphoneBudget; i++) {
-=======
-    const numVariants = Math.max(1, Math.floor(targetCount / IOS_DEVICES.length / 2));
-    for (let i = 0; i < numVariants && profiles.length < targetCount; i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       const version = pick(rand, SAFARI_VERSIONS.filter(v => parseFloat(v) >= 16));
       const locale = pick(rand, LOCALES.filter(l => ['en', 'ja', 'ko', 'zh'].includes(l.lang)));
       const screen = { w: device.screen[0], h: device.screen[1] };
@@ -752,11 +708,7 @@ export function generateFingerprintPool(targetCount = 2000) {
 
   // ── Safari on iPad (tablet) ──────────────────────────────────────────────
   for (const device of IOS_DEVICES.filter(d => d.model.includes('iPad'))) {
-<<<<<<< HEAD
     const numVariants = Math.max(1, Math.floor(ipadBudget / IOS_DEVICES.filter(d => d.model.includes('iPad')).length));
-=======
-    const numVariants = Math.max(1, Math.floor(targetCount / 8));
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     for (let i = 0; i < numVariants && profiles.length < targetCount; i++) {
       const version = pick(rand, SAFARI_VERSIONS.filter(v => parseFloat(v) >= 16));
       const locale = pick(rand, LOCALES.filter(l => ['en', 'ja', 'ko', 'zh'].includes(l.lang)));
@@ -784,7 +736,6 @@ export function generateFingerprintPool(targetCount = 2000) {
     }
   }
 
-<<<<<<< HEAD
   // ── Deduplicate by UA + screen + GPU + locale ─────────────────────────────
   // (locale in the key: without it, mobile variants collapse hard — an
   // Android model has one fixed GPU/screen, so version+locale is the only
@@ -793,13 +744,6 @@ export function generateFingerprintPool(targetCount = 2000) {
   const unique = [];
   for (const p of profiles) {
     const key = `${p.ua}:${p.screen.w}x${p.screen.h}:${p.webgl}:${p.locale}`;
-=======
-  // ── Deduplicate by UA + screen + GPU ─────────────────────────────────────
-  const seen = new Set();
-  const unique = [];
-  for (const p of profiles) {
-    const key = `${p.ua}:${p.screen.w}x${p.screen.h}:${p.webgl}`;
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(p);
@@ -817,11 +761,7 @@ let _pool = null;
 
 function getPool() {
   if (!_pool || _pool.length === 0) {
-<<<<<<< HEAD
     _pool = generateFingerprintPool(10000); // 10k unique fingerprints
-=======
-    _pool = generateFingerprintPool(2000);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   }
   return _pool;
 }

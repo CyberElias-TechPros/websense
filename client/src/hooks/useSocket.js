@@ -15,11 +15,14 @@ export function useSocket() {
   const [liveVisits, setLiveVisits] = useState([]);
 
   useEffect(() => {
+    const token =
+      import.meta.env.VITE_API_TOKEN || localStorage.getItem('websense_api_token') || '';
     const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 10,
+      auth: token ? { token } : undefined,
     });
 
     socketRef.current = socket;
