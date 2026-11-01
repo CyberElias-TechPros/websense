@@ -194,10 +194,33 @@ export class ProxyStrategies {
   }
 
   /**
+   * Geo-match: prefer proxies in the visitor profile's country (fingerprint
+   * locale ↔ proxy country consistency), falling back to random.
+   */
+  getGeoMatched(country) {
+    if (country) {
+      const cc = String(country).toUpperCase();
+      const candidates = this.proxyManager.getActiveProxies().filter(
+        (p) => (p.country || '').toUpperCase() === cc &&
+          !this._isInCooldown(p.id) && !this._exceedsMaxUses(p.id)
+      );
+      if (candidates.length > 0) {
+        const proxy = candidates[Math.floor(Math.random() * candidates.length)];
+        this._recordUsage(proxy.id);
+        proxy.lastUsed = new Date().toISOString();
+        return proxy;
+      }
+    }
+    return this.proxyManager.getRandom();
+  }
+
+  /**
    * Select proxy by strategy name.
    */
-  select(strategy) {
+  select(strategy, opts = {}) {
     switch (strategy) {
+      case 'geo-match':
+        return this.getGeoMatched(opts.preferCountry);
       case 'best-first':
         return this.getBestFirst();
       case 'weighted-round-robin':
@@ -272,6 +295,7 @@ export class ProxyStrategies {
       { id: 'random', name: 'Random', description: 'Pick random proxy' },
       { id: 'weighted', name: 'Weighted', description: 'Weighted by success history' },
       { id: 'geo', name: 'Geo Spread', description: 'Balance visits across countries' },
+      { id: 'geo-match', name: 'Geo Match', description: 'Match proxy country to the visitor profile locale country' },
       { id: 'least-recently-used', name: 'Least Recently Used', description: 'Pick proxy used least recently' },
     ];
   }

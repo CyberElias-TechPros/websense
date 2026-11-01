@@ -71,7 +71,6 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-<<<<<<< HEAD
 // Extract page demographics once — reused by the behavior director (AI plan)
 // and by the dwell simulation.
 async function getPageStats(page) {
@@ -92,24 +91,13 @@ async function simulateScroll(page, totalSteps = 6, plan = null) {
   const maxScroll = await page.evaluate(() => document.body.scrollHeight - window.innerHeight);
   const depth = clampNum(plan?.scroll?.depth, 0.15, 1.0, 0.55);
   const target = Math.floor(maxScroll * (0.15 + Math.random() * 0.2 + depth * 0.65));
-=======
-async function simulateScroll(page, totalSteps = 6) {
-  const current = await page.evaluate(() => window.scrollY);
-  const maxScroll = await page.evaluate(() => document.body.scrollHeight - window.innerHeight);
-  const target = Math.floor(maxScroll * (0.3 + Math.random() * 0.6));
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   const steps = Math.floor(target / 100) || 1;
 
   // Acceleration/deceleration: fast in middle, slow at edges
   const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
-<<<<<<< HEAD
   for (let i = 0; i < Math.min(steps, Math.max(1, totalSteps)); i++) {
     const progress = (i + 1) / Math.min(steps, Math.max(1, totalSteps));
-=======
-  for (let i = 0; i < Math.min(steps, totalSteps); i++) {
-    const progress = (i + 1) / Math.min(steps, totalSteps);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const easedProgress = easeInOut(progress);
     const y = current + Math.floor((target - current) * easedProgress);
     await page.evaluate((y) => window.scrollTo(0, y), y);
@@ -118,26 +106,19 @@ async function simulateScroll(page, totalSteps = 6) {
   }
 
   // Sometimes scroll back up slightly (users often re-read)
-<<<<<<< HEAD
   if (Math.random() < 0.2 + 0.2 * clampNum(plan?.hover?.intensity, 0.1, 1.0, 0.5)) {
-=======
-  if (Math.random() < 0.2) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const backTarget = Math.floor(target * 0.7);
     await page.evaluate((y) => window.scrollTo(0, y), backTarget);
     await sleep(200 + Math.random() * 400);
   }
 }
 
-<<<<<<< HEAD
 // Tiny local clamp (avoids importing the director's helpers)
 function clampNum(v, lo, hi, fallback) {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback;
   return Math.min(hi, Math.max(lo, n));
 }
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 async function simulateMouse(page) {
   const startX = Math.random() * 400;
   const startY = Math.random() * 300;
@@ -188,45 +169,25 @@ async function simulateClick(page, selector) {
   }
 }
 
-<<<<<<< HEAD
 async function simulateDwell(page, minMs = 2000, maxMs = 8000, plan = null) {
   const pageData = await getPageStats(page);
-=======
-async function simulateDwell(page, minMs = 2000, maxMs = 8000) {
-  const pageData = await page.evaluate(() => {
-    return {
-      contentLength: document.body?.innerText?.length || 0,
-      headings: document.querySelectorAll('h1, h2, h3').length,
-      images: document.querySelectorAll('img').length,
-      links: document.querySelectorAll('a').length,
-      paragraphs: document.querySelectorAll('p').length,
-      words: document.body?.innerText?.split(/\s+/).filter(w => w.length > 0).length || 0,
-    };
-  });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
   // Base dwell time scales with content complexity
   const wordFactor = Math.min(pageData.words / 500, 3);
   const imageFactor = Math.min(pageData.images / 10, 1);
   const linkFactor = Math.min(pageData.links / 20, 1);
 
-<<<<<<< HEAD
   // Realistic dwell: users spend more time on content-heavy pages.
   // The behavior plan scales this like a real persona would (a
   // 'quick_bouncer' leaves fast; a 'content_reader' lingers).
   const dwellScale = clampNum(plan?.dwellScale, 0.3, 3.0, 1.0);
   const baseDwell = (minMs + Math.random() * (maxMs * (1 + wordFactor * 0.5))) * dwellScale;
-=======
-  // Realistic dwell: users spend more time on content-heavy pages
-  const baseDwell = minMs + Math.random() * (maxMs * (1 + wordFactor * 0.5));
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   const dwell = baseDwell + (imageFactor * 500) + (linkFactor * 200);
 
   await sleep(dwell);
 }
 
 // Content-aware mouse movement: move towards interesting elements
-<<<<<<< HEAD
 async function simulateContentMouse(page, plan = null) {
   // Hover intensity from the behavior plan: how many elements we explore and
   // how often we hover purposefully before moving on.
@@ -235,12 +196,6 @@ async function simulateContentMouse(page, plan = null) {
   const elements = await page.evaluate(() => {
     const interesting = document.querySelectorAll('a, button, input, [role="button"], .btn, .card, [class*="hero"], [class*="feature"]');
     return Array.from(interesting).slice(0, 6).map(el => {
-=======
-async function simulateContentMouse(page) {
-  const elements = await page.evaluate(() => {
-    const interesting = document.querySelectorAll('a, button, input, [role="button"], .btn, .card, [class*="hero"], [class*="feature"]');
-    return Array.from(interesting).slice(0, 5).map(el => {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       const rect = el.getBoundingClientRect();
       return {
         x: rect.x + rect.width / 2,
@@ -256,29 +211,19 @@ async function simulateContentMouse(page) {
   }
 
   // Move towards interesting elements with bezier curves
-<<<<<<< HEAD
   for (let i = 0; i < Math.min(elements.length, maxTargets); i++) {
-=======
-  for (let i = 0; i < Math.min(elements.length, 3); i++) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     const el = elements[i];
     const startX = 100 + Math.random() * 200;
     const startY = 100 + Math.random() * 200;
     await simulateMouseBezier(page, startX, startY, el.x, el.y);
     await sleep(100 + Math.random() * 300);
-<<<<<<< HEAD
     // Hover without clicking — high-intensity personas read hover states
     if (Math.random() < 0.2 + intensity * 0.5) {
-=======
-    // Sometimes hover without clicking
-    if (Math.random() < 0.3) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       await sleep(200 + Math.random() * 500);
     }
   }
 }
 
-<<<<<<< HEAD
 /**
  * Click-through: with `clickIntent` probability, follow a visible SAME-ORIGIN
  * link the way a real user would (bezier approach → click → land on the
@@ -338,8 +283,6 @@ async function clickSameOriginLink(page) {
   }
 }
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 // Typing simulation with variable speed and typos
 async function simulateTyping(page, selector, text) {
   try {
@@ -485,7 +428,6 @@ async function simulateTabSwitch(page, duration = 1000) {
 }
 
 // Verify fingerprint consistency across all spoofed APIs
-<<<<<<< HEAD
 /**
  * Build a CDP UserAgentMetadata that matches the fingerprint profile.
  * Chrome populates navigator.userAgentData from an internal UA-CH record —
@@ -537,14 +479,11 @@ function buildUserAgentMetadata(profile) {
   };
 }
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 async function verifyFingerprintConsistency(page, profile) {
   try {
     const checks = await page.evaluate(async (fp) => {
       const results = { consistent: true, checks: [] };
 
-<<<<<<< HEAD
       // 1. navigator.webdriver — THE automation flag, always critical
       const webdriver = navigator.webdriver;
       results.checks.push({ name: 'webdriver', value: webdriver, expected: false, consistent: webdriver === false, critical: true });
@@ -553,64 +492,34 @@ async function verifyFingerprintConsistency(page, profile) {
       // 2. navigator.platform — identity mismatch is detectable
       const platform = navigator.platform;
       results.checks.push({ name: 'platform', value: platform, expected: fp.platform, consistent: platform === fp.platform, critical: true });
-=======
-      // 1. navigator.webdriver
-      const webdriver = navigator.webdriver;
-      results.checks.push({ name: 'webdriver', value: webdriver, expected: false, consistent: webdriver === false });
-      if (webdriver !== false) results.consistent = false;
-
-      // 2. navigator.platform
-      const platform = navigator.platform;
-      results.checks.push({ name: 'platform', value: platform, expected: fp.platform, consistent: platform === fp.platform });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (platform !== fp.platform) results.consistent = false;
 
       // 3. navigator.languages
       const languages = navigator.languages;
       const expectedLang = fp.locale;
-<<<<<<< HEAD
       results.checks.push({ name: 'languages', value: languages, expected: [expectedLang], consistent: languages && languages[0] === expectedLang, critical: true });
-=======
-      results.checks.push({ name: 'languages', value: languages, expected: [expectedLang], consistent: languages && languages[0] === expectedLang });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (!languages || languages[0] !== expectedLang) results.consistent = false;
 
       // 4. navigator.hardwareConcurrency
       const hwConcurrency = navigator.hardwareConcurrency;
-<<<<<<< HEAD
       results.checks.push({ name: 'hardwareConcurrency', value: hwConcurrency, expected: fp.hardwareConcurrency, consistent: hwConcurrency === fp.hardwareConcurrency, critical: true });
-=======
-      results.checks.push({ name: 'hardwareConcurrency', value: hwConcurrency, expected: fp.hardwareConcurrency, consistent: hwConcurrency === fp.hardwareConcurrency });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (hwConcurrency !== fp.hardwareConcurrency) results.consistent = false;
 
       // 5. navigator.deviceMemory
       const deviceMemory = navigator.deviceMemory;
-<<<<<<< HEAD
       results.checks.push({ name: 'deviceMemory', value: deviceMemory, expected: fp.deviceMemory, consistent: deviceMemory === fp.deviceMemory, critical: true });
-=======
-      results.checks.push({ name: 'deviceMemory', value: deviceMemory, expected: fp.deviceMemory, consistent: deviceMemory === fp.deviceMemory });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (deviceMemory !== fp.deviceMemory) results.consistent = false;
 
       // 6. screen dimensions
       const screenW = screen.width;
       const screenH = screen.height;
-<<<<<<< HEAD
       results.checks.push({ name: 'screen', value: `${screenW}x${screenH}`, expected: `${fp.screen.w}x${fp.screen.h}`, consistent: screenW === fp.screen.w && screenH === fp.screen.h, critical: true });
-=======
-      results.checks.push({ name: 'screen', value: `${screenW}x${screenH}`, expected: `${fp.screen.w}x${fp.screen.h}`, consistent: screenW === fp.screen.w && screenH === fp.screen.h });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (screenW !== fp.screen.w || screenH !== fp.screen.h) results.consistent = false;
 
       // 7. window dimensions
       const innerW = window.innerWidth;
       const innerH = window.innerHeight;
-<<<<<<< HEAD
       results.checks.push({ name: 'window', value: `${innerW}x${innerH}`, expected: `${fp.screen.w}x${fp.screen.h}`, consistent: innerW === fp.screen.w && innerH === fp.screen.h, critical: true });
-=======
-      results.checks.push({ name: 'window', value: `${innerW}x${innerH}`, expected: `${fp.screen.w}x${fp.screen.h}`, consistent: innerW === fp.screen.w && innerH === fp.screen.h });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (innerW !== fp.screen.w || innerH !== fp.screen.h) results.consistent = false;
 
       // 8. timezone
@@ -624,20 +533,12 @@ async function verifyFingerprintConsistency(page, profile) {
 
       // 10. plugins
       const pluginCount = navigator.plugins ? navigator.plugins.length : 0;
-<<<<<<< HEAD
       results.checks.push({ name: 'plugins', value: pluginCount, expected: '>0', consistent: pluginCount > 0, critical: true });
-=======
-      results.checks.push({ name: 'plugins', value: pluginCount, expected: '>0', consistent: pluginCount > 0 });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (pluginCount === 0) results.consistent = false;
 
       // 11. mimeTypes
       const mimeCount = navigator.mimeTypes ? navigator.mimeTypes.length : 0;
-<<<<<<< HEAD
       results.checks.push({ name: 'mimeTypes', value: mimeCount, expected: '>0', consistent: mimeCount > 0, critical: true });
-=======
-      results.checks.push({ name: 'mimeTypes', value: mimeCount, expected: '>0', consistent: mimeCount > 0 });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (mimeCount === 0) results.consistent = false;
 
       // 12. WebGL renderer/vendor
@@ -647,19 +548,11 @@ async function verifyFingerprintConsistency(page, profile) {
         if (gl) {
           const renderer = gl.getParameter(gl.RENDERER);
           const vendor = gl.getParameter(gl.VENDOR);
-<<<<<<< HEAD
           results.checks.push({ name: 'webgl', value: { renderer, vendor }, expected: 'set', consistent: !!renderer && !!vendor, critical: true });
           if (!renderer || !vendor) results.consistent = false;
         }
       } catch (e) {
         results.checks.push({ name: 'webgl', value: 'error', expected: 'set', consistent: false, critical: true });
-=======
-          results.checks.push({ name: 'webgl', value: { renderer, vendor }, expected: 'set', consistent: !!renderer && !!vendor });
-          if (!renderer || !vendor) results.consistent = false;
-        }
-      } catch (e) {
-        results.checks.push({ name: 'webgl', value: 'error', expected: 'set', consistent: false });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
         results.consistent = false;
       }
 
@@ -673,7 +566,6 @@ async function verifyFingerprintConsistency(page, profile) {
         results.checks.push({ name: 'audioContext', value: 'error', expected: 'set', consistent: false });
       }
 
-<<<<<<< HEAD
       // 14. userAgentData (Chromium only)
       if (fp.browser === 'chrome' || fp.browser === 'edge') {
         const uad = navigator.userAgentData;
@@ -687,15 +579,6 @@ async function verifyFingerprintConsistency(page, profile) {
         // under a Firefox/Safari UA string is itself a bot tell. Advisory
         // only (the stealth patch removes it when present).
         results.checks.push({ name: 'userAgentData', value: navigator.userAgentData ? 'present' : 'absent', expected: 'absent', consistent: !navigator.userAgentData });
-=======
-      // 14. userAgentData (Chrome only)
-      if (navigator.userAgentData) {
-        const brands = navigator.userAgentData.brands;
-        const mobile = navigator.userAgentData.mobile;
-        const platform = navigator.userAgentData.platform;
-        results.checks.push({ name: 'userAgentData', value: { brands, mobile, platform }, expected: 'set', consistent: !!brands && !!platform });
-        if (!brands || !platform) results.consistent = false;
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       }
 
       // 15. Battery API
@@ -720,11 +603,7 @@ async function verifyFingerprintConsistency(page, profile) {
 
       // 17. Touch support
       const maxTouchPoints = navigator.maxTouchPoints;
-<<<<<<< HEAD
       results.checks.push({ name: 'touchPoints', value: maxTouchPoints, expected: fp.isMobile ? '>0' : 0, consistent: fp.isMobile ? maxTouchPoints > 0 : maxTouchPoints === 0, critical: true });
-=======
-      results.checks.push({ name: 'touchPoints', value: maxTouchPoints, expected: fp.isMobile ? '>0' : 0, consistent: fp.isMobile ? maxTouchPoints > 0 : maxTouchPoints === 0 });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (fp.isMobile && maxTouchPoints === 0) results.consistent = false;
       if (!fp.isMobile && maxTouchPoints > 0) results.consistent = false;
 
@@ -784,11 +663,7 @@ async function verifyFingerprintConsistency(page, profile) {
         chromeChecks.push('loadTimes' in window.chrome);
       }
       const chromeScore = chromeChecks.filter(Boolean).length / chromeChecks.length;
-<<<<<<< HEAD
       results.checks.push({ name: 'chromeObject', value: { score: chromeScore, checks: chromeChecks }, expected: 1, consistent: chromeScore === 1, critical: true });
-=======
-      results.checks.push({ name: 'chromeObject', value: { score: chromeScore, checks: chromeChecks }, expected: 1, consistent: chromeScore === 1 });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       if (chromeScore < 1) results.consistent = false;
 
       // 26. Permissions completeness
@@ -823,15 +698,9 @@ async function verifyFingerprintConsistency(page, profile) {
         ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
         ctx.fillText('WebSense, <canvas>', 5, 17);
         const canvasData = canvas.toDataURL();
-<<<<<<< HEAD
         results.checks.push({ name: 'canvasFingerprint', value: { length: canvasData.length }, expected: '>0', consistent: canvasData.length > 100, critical: true });
       } catch (e) {
         results.checks.push({ name: 'canvasFingerprint', value: 'error', expected: '>0', consistent: false, critical: true });
-=======
-        results.checks.push({ name: 'canvasFingerprint', value: { length: canvasData.length }, expected: '>0', consistent: canvasData.length > 100 });
-      } catch (e) {
-        results.checks.push({ name: 'canvasFingerprint', value: 'error', expected: '>0', consistent: false });
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       }
 
       // 29. MediaDevices API
@@ -1212,7 +1081,6 @@ async function verifyFingerprintConsistency(page, profile) {
         results.checks.push({ name: 'eventSource', value: 'unavailable', expected: 'available', consistent: false });
       }
 
-<<<<<<< HEAD
       // Final verdict: only detection-critical signals gate the visit.
       // The rest (clipboard/storage/notification permission states, API
       // availability, etc.) legitimately varies between machines — failing
@@ -1224,8 +1092,6 @@ async function verifyFingerprintConsistency(page, profile) {
         ? criticalChecks.every((c) => c.consistent)
         : results.consistent;
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       return results;
     }, profile);
 
@@ -1246,13 +1112,24 @@ async function injectAnalytics(page, analyticsManager, clientId) {
   const consent = analyticsManager.generateConsentPayload(analyticsManager.config.consentMode);
 
   await page.evaluateOnNewDocument((gaId, clientId, consentJson) => {
+    // dataLayer MUST stay an Array — gtag.js, GTM and every third-party tag
+    // script (including AdSense's) call dataLayer.push()/forEach on it.
+    // Replacing it with an object (the old `window.dataLayer = { consent: … }`)
+    // throws "dataLayer.push is not a function" and breaks the page's own
+    // analytics/ad scripts, which is why ads stopped rendering.
+    if (!Array.isArray(window.dataLayer)) window.dataLayer = [];
     if (consentJson) {
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer = { consent: JSON.parse(consentJson) };
+      const consent = JSON.parse(consentJson);
+      // Standard gtag consent events (default before tags load, update after)
+      window.dataLayer.push(['consent', 'default', consent]);
+      window.dataLayer.push(['consent', 'update', consent]);
     }
 
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
+    function gtag() {
+      if (!Array.isArray(window.dataLayer)) window.dataLayer = [];
+      window.dataLayer.push(arguments);
+    }
+    window.gtag = gtag;
     gtag('js', new Date());
     gtag('config', gaId, { client_id: clientId });
 
@@ -1335,11 +1212,7 @@ async function setNetworkCondition(page, connectionType) {
   if (!cond) return;
 
   try {
-<<<<<<< HEAD
     const client = await page.createCDPSession(); // target-level session (BrowserContext has no newCDPSession here)
-=======
-    const client = await page.context().newCDPSession(page);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     await client.send('Network.emulateNetworkConditions', {
       offline: false,
       latency: cond.latency,
@@ -1450,10 +1323,6 @@ function getAudioSpoofScript(seed) {
 // Comprehensive stealth injection script
 // ---------------------------------------------------------------------------
 function getStealthScript(fingerprint, seed) {
-<<<<<<< HEAD
-=======
-  const rand = mulberry32(seed);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   const fp = fingerprint;
   const plugins = getPlugins(fp);
   const mimeTypes = getMimeTypes(fp);
@@ -1461,11 +1330,7 @@ function getStealthScript(fingerprint, seed) {
   const webglSpoof = getWebGLSpoofScript(fp);
   const audioSpoof = getAudioSpoofScript(seed);
 
-<<<<<<< HEAD
   return (fp, tz, plugins, mimeTypes, seed, canvasSpoofFn, webglSpoofFn, audioSpoofFn) => {
-=======
-  return (fp, tz, plugins, mimeTypes, seed) => {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     // 1. WebDriver detection
     Object.defineProperty(navigator, 'webdriver', {
       get: () => false,
@@ -1618,7 +1483,6 @@ function getStealthScript(fingerprint, seed) {
     delete window.cdc_adoQpoasnfa76pfcZLmcfl_;
 
     // 13. Canvas fingerprint randomization
-<<<<<<< HEAD
     if (typeof canvasSpoofFn === 'function') {
       canvasSpoofFn(seed);
     }
@@ -1632,15 +1496,6 @@ function getStealthScript(fingerprint, seed) {
     if (typeof audioSpoofFn === 'function') {
       audioSpoofFn(seed);
     }
-=======
-    canvasSpoof(seed);
-
-    // 14. WebGL fingerprint randomization
-    webglSpoof(fp);
-
-    // 15. AudioContext fingerprint randomization
-    audioSpoof(seed);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
     // 16. WebRTC leak prevention (comprehensive + STUN blocking)
     try {
@@ -1758,7 +1613,6 @@ function getStealthScript(fingerprint, seed) {
       }
     } catch (e) { /* Notifications may not be available */ }
 
-<<<<<<< HEAD
     // 17. userAgentData API — real Firefox/Safari have none at all, so for
     // those profiles REMOVE it (presence under a non-Chromium UA is a tell).
     if (fp.browser === 'firefox' || fp.browser === 'safari') {
@@ -1770,10 +1624,6 @@ function getStealthScript(fingerprint, seed) {
         });
       } catch (e) { /* non-configurable — leave as-is */ }
     } else if (navigator.userAgentData) {
-=======
-    // 17. userAgentData API
-    if (navigator.userAgentData) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       Object.defineProperty(navigator, 'userAgentData', {
         get: () => ({
           brands: fp.clientHints?.brands || [{ brand: 'Google Chrome', version: '126' }],
@@ -2098,11 +1948,9 @@ export async function runBrowserVisit({
   analyticsManager = null, captchaSolver = null, contentVerifier = null,
   connectionType = null, clientId = null, adViewability = null,
   screenshotSystem = null, fingerprint = null, sessionPersistence = null,
-<<<<<<< HEAD
   headless = true, // false → visible window so the visit can be watched
   behaviorDirector = null, // AI/human behavior director (multi-provider)
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+  feedback = null, // detection-feedback adjustments (slowdownFactor etc.) → fed into the behavior plan
 }) {
   const puppeteer = await loadPuppeteer();
   if (!puppeteer) return { success: false, error: 'Puppeteer not installed' };
@@ -2111,45 +1959,27 @@ export async function runBrowserVisit({
   const seed = sessionSeed || Date.now();
   const fp = fingerprint || getRandomFingerprint();
 
-<<<<<<< HEAD
   // Build proxy URL with SOCKS5 support.
   // NOTE: Chrome's --proxy-server flag does NOT support credentials
   // (userinfo → net::ERR_NO_SUPPORTED_PROXIES). Credentials are applied
   // after launch via page.authenticate() instead.
   const proxyType = proxy.type === 'socks5' || proxy.type === 'socks' ? 'socks5' : 'http';
   const proxyServerUrl = `${proxyType}://${proxy.host}:${proxy.port}`;
-=======
-  // Build proxy URL with SOCKS5 support
-  const proxyAuth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(proxy.password)}@` : '';
-  const proxyType = proxy.type === 'socks5' || proxy.type === 'socks' ? 'socks5' : 'http';
-  const proxyUrl = `${proxyType}://${proxyAuth}${proxy.host}:${proxy.port}`;
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
   // Get or create persistent fingerprint
   const sessionFp = sessionPersistence ? await sessionPersistence.getOrCreateFingerprint(seed) : { profile: fp, isNew: true };
   const profile = sessionFp.profile || fp;
   const canvasSeed = sessionFp.canvasSeed || seed;
-<<<<<<< HEAD
   const visitId = crypto.randomUUID(); // used by the screenshot system
 
   // Launch options — NO --disable-web-security (detectable + insecure)
   const launchOptions = {
     headless: headless === false ? false : 'new',
-=======
-
-  // Launch options — NO --disable-web-security (detectable + insecure)
-  const launchOptions = {
-    headless: 'new',
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-<<<<<<< HEAD
       ...(headless === false ? [] : ['--disable-gpu']),
-=======
-      '--disable-gpu',
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       '--disable-blink-features=AutomationControlled',
       '--disable-features=IsolateOrigins,site-per-process',
       '--no-default-browser-check',
@@ -2164,12 +1994,8 @@ export async function runBrowserVisit({
       '--use-fake-device-for-media-stream',
       '--use-fake-ui-for-media-stream',
       '--enable-features=NetworkServiceInProcess2',
-<<<<<<< HEAD
       `--proxy-server=${proxyServerUrl}`,
       ...(headless === false ? [`--window-size=${profile.screen.w},${profile.screen.h}`] : []),
-=======
-      `--proxy-server=${proxyUrl}`,
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     ],
   };
 
@@ -2190,14 +2016,11 @@ export async function runBrowserVisit({
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
 
-<<<<<<< HEAD
     // Proxy credentials (Chrome's --proxy-server can't carry user:pass)
     if (proxy.username) {
       await page.authenticate({ username: proxy.username, password: proxy.password });
     }
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     // Set fingerprint-consistent viewport
     await page.setViewport({
       width: profile.screen.w,
@@ -2206,7 +2029,6 @@ export async function runBrowserVisit({
       isMobile: profile.isMobile,
       hasTouch: profile.isMobile,
     });
-<<<<<<< HEAD
     // Set identity. For Chrome/Edge use a full CDP override (UA + UA-CH
     // metadata) so navigator.userAgentData stays consistent — a plain
     // page.setUserAgent() resets brands to [] / platform to '', which real
@@ -2230,19 +2052,12 @@ export async function runBrowserVisit({
     } else {
       await page.setUserAgent(profile.ua);
     }
-=======
-    await page.setUserAgent(profile.ua);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
     // Get the stealth script and inject it
     const stealthFn = getStealthScript(profile, canvasSeed);
 
     // Inject comprehensive stealth overrides before every page load
-<<<<<<< HEAD
     await page.evaluateOnNewDocument(stealthFn, profile, getTimezoneForProfile(profile), getPlugins(profile), getMimeTypes(profile), canvasSeed, getCanvasSpoofScript(canvasSeed), getWebGLSpoofScript(profile), getAudioSpoofScript(canvasSeed));
-=======
-    await page.evaluateOnNewDocument(stealthFn, profile, getTimezoneForProfile(profile), getPlugins(profile), getMimeTypes(profile), canvasSeed);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
     // Inject analytics (Sprint 3 — F2.8)
     const visitClientId = clientId || `client-${seed}`;
@@ -2254,14 +2069,9 @@ export async function runBrowserVisit({
     }
 
     // Add extra headers for client hints consistency
-<<<<<<< HEAD
     // NOTE: setExtraHTTPHeaders is a Page API — BrowserContext has no such method.
     const clientHints = getClientHintsHeaders(profile);
     await page.setExtraHTTPHeaders({
-=======
-    const clientHints = getClientHintsHeaders(profile);
-    await context.setExtraHTTPHeaders({
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       ...clientHints,
       'Accept-Encoding': getAcceptEncoding(profile),
     });
@@ -2296,7 +2106,6 @@ export async function runBrowserVisit({
       sessionPersistence.storeCookies(domain, setCookies);
     }
 
-<<<<<<< HEAD
     // ── Human behavior simulation, directed by the behavior plan ────────
     // The AI behavior director (OmniRoute / Ollama / heuristic personas)
     // decides HOW this user behaves on THIS page: how long they stay, how
@@ -2307,7 +2116,7 @@ export async function runBrowserVisit({
     if (behaviorDirector) {
       try {
         const pageStats = await getPageStats(page);
-        behaviorPlan = await behaviorDirector.buildPlan({ url, profile, pageStats, seed });
+        behaviorPlan = await behaviorDirector.buildPlan({ url, profile, pageStats, seed, feedback });
       } catch (e) {
         logger.warn(`Behavior plan failed, using defaults: ${e.message}`);
       }
@@ -2332,14 +2141,6 @@ export async function runBrowserVisit({
     if (typeof plan.clickIntent === 'number' && plan.clickIntent > 0 && Math.random() * 0.8 < plan.clickIntent) {
       clickedThrough = await clickSameOriginLink(page);
     }
-=======
-    // Human behavior simulation
-    await simulateMouse(page);
-    await simulateDwell(page, 2000, 6000);
-    await simulateScroll(page);
-    // Content-aware mouse movement
-    await simulateContentMouse(page);
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
 
     // CAPTCHA detection & solving (Sprint 3 — F2.9)
     const captchaDetected = await detectCaptcha(page);
@@ -2377,7 +2178,15 @@ export async function runBrowserVisit({
     const statusCode = response?.status() || 0;
     const latency = Date.now() - start;
 
-<<<<<<< HEAD
+    // Detection signal for the feedback loop: 403/429/503 or a CAPTCHA page
+    // means this host+proxy+fingerprint got flagged — the AI behavior
+    // director uses this to plan more cautiously next time on this host.
+    const detection = {
+      blocked: [403, 429, 503].includes(statusCode),
+      captcha: captchaDetected,
+      statusCode,
+    };
+
     // Explain any failed success-gate instead of returning a bare false
     const failureReasons = [];
     if (!(statusCode > 0 && statusCode < 500)) failureReasons.push(`status ${statusCode}`);
@@ -2388,8 +2197,6 @@ export async function runBrowserVisit({
     }
     if (fingerprintCheck.error) failureReasons.push(`fingerprint check error: ${fingerprintCheck.error}`);
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     return {
       success: statusCode > 0 && statusCode < 500 && !verification.errors.length && fingerprintCheck.consistent,
       statusCode,
@@ -2411,7 +2218,7 @@ export async function runBrowserVisit({
       },
       verification,
       captchaSolved: captchaDetected,
-<<<<<<< HEAD
+      detection,
       error: failureReasons.length ? failureReasons.join(' | ') : null,
       adViewability: adViewabilityResult,
       behavior: behaviorPlan
@@ -2423,9 +2230,6 @@ export async function runBrowserVisit({
             dwellScale: plan.dwellScale,
           }
         : null,
-=======
-      adViewability: adViewabilityResult,
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       sessionFingerprintId: sessionFp?.fingerprintId,
     };
   } finally {

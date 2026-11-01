@@ -295,6 +295,91 @@ WebSense is a stealth traffic engine that automates website visits through resid
 
 ---
 
+## User Story 14: AI-Directed Human Behavior (OmniRoute / Ollama / heuristic)
+**As a** user
+**I want** each visit to behave like a distinct real human, directed by AI
+**So that** dwell time, scrolling, hovering, pauses and click-throughs look organic
+
+### Flow
+1. Browser loads page → page stats extracted (title, words, links, images, video)
+2. AI Behavior Director builds a per-visit **behavior plan** (persona + dwellScale + scroll + hover + clickIntent + pauseScale)
+3. Provider priority: OmniRoute (`:20128`, OpenAI-compatible) → Ollama → any OpenAI-compatible endpoint → deterministic heuristic personas
+4. Plan is cached per page+device (30 min), time-capped (8 s), never blocks the visit
+5. Browser-mode engine applies the plan to dwell, scroll, mouse, reading pauses, same-origin click-through
+6. Plan recorded in the visit result (`behavior` field) for analytics
+
+### Acceptance Criteria
+- No LLM reachable → heuristic persona plan still produced (visit never blocked)
+- Same visitor + same page → consistent persona (returning-visitor consistency)
+- LLM output is JSON-extracted and clamped to safe ranges
+- `AI_BEHAVIOR=0` disables the director
+
+### API Endpoints
+- GET /api/ai/director/status — active provider, models, stats
+- POST /api/ai/director/recheck — re-probe providers (e.g. after starting OmniRoute)
+- POST /api/ai/director/plan — preview the plan for a URL (no visit made)
+
+---
+
+## User Story 15: Free Proxy Pool on top of paid Webshare proxies
+**As a** user with ~100 paid Webshare proxies
+**I want** thousands of additional free proxies from regularly-updated GitHub repos
+**So that** the ~10k unique browser profiles each get a matching proxy (wider geo/type range)
+
+### Flow
+1. Every 6 h (and 15 s after boot) the fetcher pulls lists from proxifly, TheSpeedX, monosans, clarketm, ZloiUser, roosterkid
+2. Raw files via raw.githubusercontent.com; **codeload.github.com zip fallback** (one zip per repo, extracted locally) — force with `FREE_PROXY_USE_CODELOAD=1`
+3. Lines parsed (`protocol://ip:port` / `ip:port`, credential suffixes stripped), deduped, capped (`FREE_PROXY_MAX`)
+4. proxifly `data.json` adds country/city geo metadata
+5. Merged into ProxyManager as `source: 'free'`, **credential-less** (never Webshare creds)
+6. A sample of new proxies is TCP-probed; dead ones are **disabled, never deleted**
+7. Paid Webshare proxies are never removed or modified by free-source operations
+
+### API Endpoints
+- POST /api/proxies/free/refresh — manual refresh (returns report)
+- GET /api/proxies/free/stats — config, pool composition, recent refreshes
+- PUT /api/proxies/free/config — change max / refreshHours / probe settings at runtime
+- GET /api/proxies/sources — paid vs free counts
+
+---
+
+## User Story 16: Analytics & ad-script integrity on visited pages
+**As a** user verifying analytics/ads on my own pages
+**I want** the injected GA4/consent code to not break the page's own scripts
+**So that** gtag, GTM, AdSense and site scripts run without errors and ads render
+
+### Business rules
+- `window.dataLayer` must remain an **Array** at all times; consent is pushed as
+  `['consent','default',…]` then `['consent','update',…]` events
+- `gtag()` is defensive (re-creates the array if something replaced it)
+- Stealth spoof functions are passed explicitly to `evaluateOnNewDocument`
+  (no references to page-scope names that don't exist → no `canvasSpoof is not defined`)
+- Default consent mode `advanced` (= real "Accept all") so AdSense renders in GDPR regions
+
+---
+
+## User Story 17: Matching, hygiene & observability layer
+**As a** operator
+**I want** profiles matched to proxies, free proxies self-cleaning, domain rules
+respected, and full observability
+**So that** traffic stays consistent per visitor, the pool stays healthy, targets'
+rules are honored, and I can see problems before they grow
+
+### Flows
+1. **Geo-match**: fingerprint locale → expected country → `proxyManager.select(strategy, { preferCountry })` prefers same-country active proxies (`geo-match` strategy forces it; `GEO_MATCH_PROXIES=0` disables)
+2. **Stickiness**: return-visitor profile → bound proxy (`proxy_host/proxy_port`) reused while active → re-bound after each session
+3. **Archiving**: free proxy hits `FREE_PROXY_ARCHIVE_AFTER_FAILURES` consecutive failures → archived (disabled, persisted); fresh free-list hit → un-archived automatically; paid proxies never archived
+4. **Feedback loop**: visit outcome (403/429/captcha) → `behaviorDirector.recordOutcome` + `detectionFeedback.recordSignal` → next plan on that host is cautious (LLM prompt context + heuristic click/pause adjustment)
+5. **Domain rules**: before proxy selection, `domainRules.check(url)` enforces opt-outs, per-domain rate limits, robots.txt Disallow; skips don't consume proxies
+6. **Observability**: every visit/refresh/AI-stat/detection tick feeds `/api/metrics`; alert rules raise ack-able alerts (also pushed over WebSocket)
+
+### API Endpoints
+- GET /api/metrics (`?format=prometheus`) · GET /api/alerts · POST /api/alerts/:id/ack
+- GET/PATCH /api/domain-rules · PUT /api/domain-rules/:domain · POST /api/domain-rules/opt-out · DELETE /api/domain-rules/opt-out/:domain · POST /api/domain-rules/:domain/robots/refresh · GET /api/domain-rules/:domain/check
+- GET /api/proxy-strategies (includes `geo-match`)
+
+---
+
 ## Business Logic Summary
 
 ### Proxy Selection Flow
@@ -323,3 +408,52 @@ WebSense is a stealth traffic engine that automates website visits through resid
 2. Send proxy data to AI model
 3. AI returns analysis/recommendations
 4. Results stored and used for strategy selection
+
+### AI Behavior Director Flow (per visit)
+1. VisitEngine passes `behaviorDirector` into browser-mode
+2. After page load, extract page stats (title/words/links/images/video)
+3. Director builds plan: LLM (OmniRoute → Ollama → OpenAI-compatible) or heuristic persona fallback
+4. Plan cached per host+device+seed (30 min TTL), LLM calls capped at 8 s
+5. Browser-mode applies plan: dwell × dwellScale, scroll steps/depth, hover intensity, pause × pauseScale, click-through with clickIntent
+6. Plan + outcome stored in visit result (`behavior`) for the analytics dashboard
+
+### Free Proxy Pipeline Flow
+1. Boot → 15 s later initial refresh; then every `FREE_PROXY_REFRESH_HOURS`
+2. Fetch all GitHub sources in parallel (raw first, codeload zip fallback, per-repo zip cached)
+3. Parse → dedupe → cap (`FREE_PROXY_MAX`, `FREE_PROXY_PER_SOURCE_CAP`)
+4. Skip host:port already in pool (paid included) — archived free ones present in a fresh list are un-archived (backfill) → add the rest as `source: 'free'`, no credentials
+5. Probe sample (TCP, concurrency-capped) → disable dead via `toggleProxy(host, false)`
+6. Report logged + fed to observability + exposed via `/api/proxies/free/*`; paid pool untouched
+7. Visit failures on free proxies: `recordFailure` → circuit breaker; at `FREE_PROXY_ARCHIVE_AFTER_FAILURES` consecutive failures the proxy is archived (paid never)
+
+### Visit Selection Flow (updated)
+1. Pick URL → domain-rules check (opt-out / rate-limit / robots.txt) → skip without proxy if blocked
+2. Fingerprint → expected country (locale) → geo-match
+3. If bound to a visitor profile → reuse profile's proxy while active
+4. Otherwise `select(strategy, { preferCountry })` → geo-matched pick
+5. Execute visit → record result → domain rules log, observability, proxy stats
+6. Failure → recordFailure (archive if free & threshold) → detection feedback + director outcome → retry logic
+
+---
+
+## User Story 18: Hardened, audit-proof operation
+**As an** operator
+**I want** the whole app audited end-to-end: session chains that actually hold,
+bounded background work, validated inputs, safe config endpoints, optional auth,
+and no performance traps
+**So that** running it at scale (thousands of free proxies, long uptime) is safe and predictable
+
+### Audit findings → fixes
+1. **Session chains were broken (critical)**: the session manager passed `{proxy, url}` per page into `executeVisit`, but the engine ignored both and re-rolled a random proxy+URL every page. Now caller-supplied `options.url`/`options.proxy` win; a caller proxy that got disabled/archived meanwhile triggers re-selection; domain-rules checks and persistence use the effective URL
+2. **Visits didn't record behavior/skips**: `visits` table gained `behavior`, `skipped`, `skip_reason` columns; engine persists them on every path (success/failure/skip/demo); `GET /api/visits?status=skipped` filters them
+3. **Health checks probed the entire pool every 60 s**: background sweep now uses `healthCheckBatch` — a rotating window (`HEALTH_CHECK_BATCH_SIZE`, default 100) with bounded concurrency (25), archived proxies excluded; `healthCheckAll` also capped + archived-skipping
+4. **No input validation**: new `api/validate.js` — `POST /api/proxies` and `POST /api/urls` return 400 with per-field details (valid host/port/type, credentials together, http/https only, ≤2048 chars)
+5. **Config endpoint unsafe**: `PATCH /api/config` now validates against a whitelist schema (unknown keys → 400; `maxInterval ≥ minInterval` checked against the merged config) and persists via `setSystemConfig`; `GET /api/config` returns only schema keys (previously serialized the whole scheduler config incl. the circular session manager → 500)
+6. **Dev-proxy port mismatch**: vite dev proxy now targets `VITE_BACKEND_PORT` (default 3001 = server/docker default) instead of a hardcoded 3002
+7. **No tests script / lazy fingerprint pool / no retention job / log slurp**: `npm test` (vitest) added; 10k fingerprint pool pre-warmed at boot; daily `DB_CLEANUP_DAYS` purge job; `/api/logs` tail-reads the last 2 MB
+8. **No auth option for exposed dashboards**: opt-in `API_TOKEN` → Bearer auth on `/api` (+`?token=`) and socket.io `auth:{token}`; client sends `VITE_API_TOKEN` / `localStorage.websense_api_token`; docker-compose passes all new env vars through
+
+### API Endpoints
+- PATCH /api/config (validated, persisted) · GET /api/config (schema keys only)
+- POST /api/proxies · POST /api/urls (400 + details on invalid input)
+- GET /api/visits?status=success|failed|skipped · GET /api/logs (tail)

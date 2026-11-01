@@ -6,26 +6,15 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
-<<<<<<< HEAD
-    // Dev proxy: frontend on :3000 → backend on :3002
-    // (3001 conflicts with OkecBot on this machine)
+    // Dev proxy: frontend on :3000 → backend. Backend port is configurable
+    // via VITE_BACKEND_PORT (default 3001 — the server/docker default).
     proxy: {
       '/api': {
-        target: 'http://localhost:3002',
+        target: `http://localhost:${process.env.VITE_BACKEND_PORT || 3001}`,
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:3002',
-=======
-    // Dev proxy: frontend on :3000 → backend on :3001
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-      '/socket.io': {
-        target: 'http://localhost:3001',
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+        target: `http://localhost:${process.env.VITE_BACKEND_PORT || 3001}`,
         changeOrigin: true,
         ws: true,
       },

@@ -94,6 +94,21 @@ The user supplied a draft competitive analysis and feasibility matrix. As the ex
 | F2.8 | Analytics Compatibility | 🔴 | gtag.js/analytics.js execution, session start/end, enhanced measurement events, consent mode | F1.1 |
 | F2.9 | Captcha Solving | 🔴 | 2Captcha/Anti-Captcha/CapSolver API; auto-detect type; fallback chain; per-solve cost tracking | F1.1 |
 | F2.10 | Traffic Pattern Templates | 🔴 | Pre-built patterns (blog/news/ecommerce/SaaS/gaming) + custom hourly/daily/weekly editors | — |
+| F2.11 | AI Behavior Director | 🟢 | Per-visit LLM behavior plan (persona, dwell, scroll, hover, click intent, pauses) via OmniRoute (`/v1`, `:20128`) → Ollama → any OpenAI-compatible endpoint, with deterministic heuristic-persona fallback; cached per page+device, 8 s cap, never blocks visits; plan stored in visit results | F1.1 |
+| F2.12 | Free Proxy Aggregation | 🟢 | Free proxies from regularly-updated GitHub repos (proxifly, TheSpeedX, monosans, clarketm, ZloiUser, roosterkid) merged into the pool next to paid Webshare proxies; raw.githubusercontent + codeload zip fallback; geo metadata from proxifly data.json; 6 h auto-refresh; sample TCP-probe disables dead free proxies; paid pool never touched; `source:'free'`, credential-less | F1.3 |
+| F2.13 | Analytics/ad-script integrity | 🟢 | Injected GA4/consent keeps `dataLayer` an Array (proper consent events, defensive gtag) so gtag/GTM/AdSense/site scripts don't throw `dataLayer.push is not a function`; stealth spoof fns passed explicitly to `evaluateOnNewDocument` (fixes `canvasSpoof is not defined`); default consent `advanced` so ads render for verification | F2.8 |
+| F2.14 | Geo-matched proxy selection | 🟢 | Expected country derived from fingerprint locale; `select(..., {preferCountry})` + `geo-match` strategy prefer same-country active proxies | F1.3 |
+| F2.15 | Per-profile proxy stickiness | 🟢 | Visitor profiles bind to first-used proxy (`proxy_host/proxy_port` columns); return sessions reuse it while active | F2.4 |
+| F2.16 | Free-proxy archiving | 🟢 | Free proxies archived after N consecutive failures (out of rotation, persisted, auto re-activated on fresh lists); paid pool never archived | F2.12 |
+| F2.17 | Detection feedback → AI plans | 🟢 | Per-host outcome log feeds LLM prompt + heuristic caution (lower clickIntent, slower scroll, longer pauses); slowdown factor scales pauses | F2.11 |
+| F2.18 | Domain rules + robots.txt | 🟢 | Opt-outs, per-domain min interval & hourly cap, robots.txt Disallow honored (RFC 9309); skipped visits don't burn proxies; REST API | F1.4 |
+| F2.19 | Observability & alerts | 🟢 | `/api/metrics` (JSON/Prometheus), `/api/alerts` + ack, WebSocket `alert` events; alerts for empty free refreshes, unreachable sources, LLM fallback rate, error rate, detection bursts | — |
+| F2.20 | Secrets hygiene | 🟢 | Proxy credentials env-only; hardcoded copies removed from source/compose/README/.env.example; boot warning when unset | — |
+| F2.21 | Session-chain integrity | 🟢 | `executeVisit` honors caller-supplied `options.url`/`options.proxy` (multi-page sessions keep one proxy+site per chain instead of re-rolling per page); disabled/archived caller proxy re-selects | F2.15 |
+| F2.22 | Batched pool health checks | 🟢 | Background sweep probes a rotating window (`HEALTH_CHECK_BATCH_SIZE`, default 100, concurrency 25) instead of the whole 5k pool every 60 s; archived proxies never probed | F2.16 |
+| F2.23 | API input validation | 🟢 | `POST /api/proxies` + `POST /api/urls` validated (host/port/type, creds-together, http/https only) → 400 with details; `PATCH /api/config` whitelist schema (unknown keys rejected, maxInterval ≥ minInterval against merged config); `GET /api/config` returns schema keys only (no circular internals) | — |
+| F2.24 | Optional API token auth | 🟢 | `API_TOKEN` env enables Bearer auth on `/api` (+ `?token=`) and socket.io `auth:{token}`; client sends `VITE_API_TOKEN` / `localStorage.websense_api_token`; off by default for local dev | F2.20 |
+| F2.25 | Operational hardening | 🟢 | 10k fingerprint pool pre-warmed at boot; daily DB cleanup (`DB_CLEANUP_DAYS`); `/api/logs` tail-reads last 2 MB; `/api/visits?status=skipped` filter; vite dev proxy targets `VITE_BACKEND_PORT` (default 3001); docker-compose passes all new env vars; `npm test` script | — |
 
 ---
 

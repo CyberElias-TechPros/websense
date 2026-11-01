@@ -20,11 +20,12 @@ export default {
   },
 
   // -------------------------------------------------------------------------
-  // Proxy credentials: from env. Defaults mirror the README's provided pool.
+  // Proxy credentials: ENV ONLY — never hardcoded in source (secrets hygiene).
+  // Set PROXY_USERNAME / PROXY_PASSWORD in server/.env (see .env.example).
   // -------------------------------------------------------------------------
   proxyAuth: {
-    username: process.env.PROXY_USERNAME || 'hmxpvtyv',
-    password: process.env.PROXY_PASSWORD || 's56i3b0mmjwv',
+    username: process.env.PROXY_USERNAME || '',
+    password: process.env.PROXY_PASSWORD || '',
   },
 
   // -------------------------------------------------------------------------
@@ -38,18 +39,16 @@ export default {
     retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '2', 10),
     retryBackoffBase: parseInt(process.env.RETRY_BACKOFF_BASE_MS || '500', 10),
     mode: process.env.VISIT_MODE || 'http', // http | browser | mixed
-<<<<<<< HEAD
     headless: process.env.HEADLESS !== '0', // HEADLESS=0 → visible browser window
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     autoStart: process.env.AUTO_START === '1',
     demoMode: process.env.DEMO_MODE === '1', // simulate visits without network
     sessionMode: process.env.SESSION_MODE === '1', // multi-page sessions
     screenshotOnVisit: process.env.SCREENSHOT === '1',
+    // Match proxy country to the visitor fingerprint's locale country (default on)
+    geoMatchProxies: process.env.GEO_MATCH_PROXIES !== '0',
   },
 
   // -------------------------------------------------------------------------
-<<<<<<< HEAD
   // Free proxy aggregation (GitHub repos: proxifly, TheSpeedX, monosans, …)
   // Merged into the pool alongside the paid Webshare proxies.
   // -------------------------------------------------------------------------
@@ -70,8 +69,6 @@ export default {
   },
 
   // -------------------------------------------------------------------------
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   // Session simulation (multi-page visits, bounce rate control, return visitors)
   // -------------------------------------------------------------------------
   session: {
@@ -143,7 +140,11 @@ export default {
   analytics: {
     enabled: process.env.ANALYTICS_ENABLED !== '0',
     platforms: ['ga4', 'clarity', 'pixel'],
-    consentMode: process.env.ANALYTICS_CONSENT || 'basic',
+    // 'advanced' = what a real user gets after clicking "Accept all" on the
+    // consent banner (the cookie-consent module accepts banners too). 'basic'
+    // denies ad_user_data/ad_personalization, which makes AdSense fall back to
+    // non-personalized ads (or none) in GDPR regions — bad for ad verification.
+    consentMode: process.env.ANALYTICS_CONSENT || 'advanced',
     enhancedMeasurement: true,
   },
 
@@ -383,6 +384,33 @@ export default {
     // Circuit-breaker thresholds (consecutive failures before cooling down).
     circuitOpenAfter: parseInt(process.env.CIRCUIT_OPEN_AFTER || '5', 10),
     circuitCooldownMs: parseInt(process.env.CIRCUIT_COOLDOWN_MS || '60000', 10),
+    // Free proxies (source='free') failing this many times in a row are
+    // ARCHIVED (out of rotation, kept in pool, re-activated if a fresh list
+    // shows them again). Paid Webshare proxies are never archived. 0 = off.
+    archiveFreeAfterFailures: parseInt(process.env.FREE_PROXY_ARCHIVE_AFTER_FAILURES || '5', 10),
+    // Background sweep is batched: each interval probes only a rotating window
+    // of the pool (instead of all 5k at once) with bounded concurrency.
+    batchSize: parseInt(process.env.HEALTH_CHECK_BATCH_SIZE || '100', 10),
+    batchConcurrency: parseInt(process.env.HEALTH_CHECK_BATCH_CONCURRENCY || '25', 10),
+  },
+
+  // -------------------------------------------------------------------------
+  // Per-target-domain rules: opt-outs, rate limits, robots.txt respect.
+  // -------------------------------------------------------------------------
+  domainRules: {
+    enabled: process.env.DOMAIN_RULES_ENABLED !== '0',
+    respectRobots: process.env.RESPECT_ROBOTS !== '0',
+    defaultMinIntervalMs: parseInt(process.env.DOMAIN_MIN_INTERVAL_MS || '60000', 10),
+    defaultMaxVisitsPerHour: parseInt(process.env.DOMAIN_MAX_VISITS_PER_HOUR || '20', 10),
+    optOuts: (process.env.DOMAIN_OPT_OUTS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  },
+
+  // -------------------------------------------------------------------------
+  // Observability: metrics + alerts (free-refresh failures, LLM fallback
+  // rate, visit error rate, detection signals).
+  // -------------------------------------------------------------------------
+  observability: {
+    enabled: process.env.OBSERVABILITY !== '0',
   },
 
   database: {

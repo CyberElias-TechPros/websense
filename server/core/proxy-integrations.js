@@ -47,8 +47,8 @@ export const ProxyProviders = {
             proxies.push({
               host,
               port,
-              username: credentials?.username || 'hmxpvtyv',
-              password: credentials?.password || 's56i3b0mmjwv',
+              username: credentials?.username || '',
+              password: credentials?.password || '',
               source: 'webshare',
               country: guessCountry(host),
               city: guessCity(host),
@@ -619,8 +619,8 @@ export const ProxyProviders = {
             proxies.push({
               host,
               port,
-              username: credentials?.username || 'hmxpvtyv',
-              password: credentials?.password || 's56i3b0mmjwv',
+              username: credentials?.username || '',
+              password: credentials?.password || '',
               source: 'webshare_premium',
               country: guessCountry(host),
               city: guessCity(host),

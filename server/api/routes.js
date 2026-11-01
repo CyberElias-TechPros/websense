@@ -8,20 +8,14 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
-import db, { toSqliteDateTime } from '../database/db.js';
+import db, { toSqliteDateTime, setSystemConfig } from '../database/db.js';
 import logger from '../utils/logger.js';
-<<<<<<< HEAD
 import { getAvailableProviders, fetchProxiesFromProvider } from '../core/proxy-integrations.js';
+import { validateProxyInput, validateUrlInput, validateEngineConfigPatch, ENGINE_CONFIG_SCHEMA } from './validate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null) {
-=======
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null) {
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
+export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null, domainRules = null, observability = null) {
   const router = Router();
 
   // -----------------------------------------------------------------------
@@ -94,8 +88,9 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
 
     let where = '1=1';
     const params = [];
-    if (status === 'success') where += ' AND success = 1';
-    if (status === 'failed') where += ' AND success = 0';
+    if (status === 'success') where += ' AND success = 1 AND skipped = 0';
+    if (status === 'failed') where += ' AND success = 0 AND skipped = 0';
+    if (status === 'skipped') where += ' AND skipped = 1';
     if (url) { where += ' AND url LIKE ?'; params.push(`%${url}%`); }
     if (proxy) { where += ' AND proxy_host = ?'; params.push(proxy); }
     if (mode) { where += ' AND mode = ?'; params.push(mode); }
@@ -227,11 +222,7 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
         SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
         SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
         AVG(CASE WHEN success = 1 THEN latency_ms END) as avg_latency,
-<<<<<<< HEAD
         AVG(CASE WHEN success = 1 THEN (julianday('now') - julianday(created_at)) * 86400 END) as avg_time_to_visit
-=======
-        AVG(CASE WHEN success = 1 THEN DATEDIFF('second', 'now', created_at) END) as avg_time_to_visit
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       FROM visits WHERE created_at > ?
     `).get(since);
 
@@ -395,7 +386,9 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   });
 
   router.post('/proxies', (req, res) => {
-    const proxy = proxyManager.addProxy(req.body || {});
+    const v = validateProxyInput(req.body);
+    if (!v.ok) return res.status(400).json({ error: 'Invalid proxy', details: v.errors });
+    const proxy = proxyManager.addProxy(v.value);
     if (!proxy) return res.status(409).json({ error: 'Proxy already exists' });
     res.json({ success: true, proxy });
   });
@@ -445,7 +438,6 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     }
   });
 
-<<<<<<< HEAD
   // Evaluate the whole pool at once (client: evaluateProxies()).
   router.post('/proxy-evaluator/evaluate-all', async (req, res) => {
     if (!proxyEvaluator) return res.status(404).json({ error: 'Proxy evaluator not available' });
@@ -480,8 +472,6 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     });
   });
 
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   // -----------------------------------------------------------------------
   // Proxy Strategies — advanced selection
   // -----------------------------------------------------------------------
@@ -498,7 +488,6 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     res.json({ success: true, strategy: strategy || 'best-first', proxy: { host: proxy.host, port: proxy.port, country: proxy.country, city: proxy.city, flag: proxy.flag } });
   });
 
-<<<<<<< HEAD
   router.get('/proxy-strategies/stats', (req, res) => {
     if (!proxyStrategies) return res.json({ enabled: false });
     const now = Date.now();
@@ -527,11 +516,6 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     });
   });
 
-=======
-  // -----------------------------------------------------------------------
-  // Proxy Integrations — multi-source proxy fetching
-  // -----------------------------------------------------------------------
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   router.get('/proxy-integrations/providers', (req, res) => {
     res.json({ providers: getAvailableProviders() });
   });
@@ -678,9 +662,9 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   });
 
   router.post('/urls', (req, res) => {
-    const { url } = req.body || {};
-    if (!url) return res.status(400).json({ error: 'URL required' });
-    const entry = urlManager.addUrl(url);
+    const v = validateUrlInput(req.body);
+    if (!v.ok) return res.status(400).json({ error: 'Invalid URL', details: v.errors });
+    const entry = urlManager.addUrl(v.value);
     if (!entry) return res.status(409).json({ error: 'URL already exists' });
     res.json({ success: true, url: entry });
   });
@@ -711,12 +695,30 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   // Config
   // -----------------------------------------------------------------------
   router.get('/config', (req, res) => {
-    res.json(scheduler.config);
+    // Only expose whitelisted engine keys — scheduler.config also carries the
+    // sessionManager object (circular), which must never be serialized.
+    const out = {};
+    for (const key of Object.keys(ENGINE_CONFIG_SCHEMA)) {
+      if (scheduler.config[key] !== undefined) out[key] = scheduler.config[key];
+    }
+    res.json(out);
   });
 
   router.patch('/config', (req, res) => {
-    scheduler.updateConfig(req.body || {});
-    res.json({ success: true, config: scheduler.config });
+    const current = {};
+    for (const key of Object.keys(ENGINE_CONFIG_SCHEMA)) {
+      if (scheduler.config[key] !== undefined) current[key] = scheduler.config[key];
+    }
+    const v = validateEngineConfigPatch(req.body, current);
+    if (!v.ok) return res.status(400).json({ error: 'Invalid config', details: v.errors });
+    scheduler.updateConfig(v.value);
+    // Persist so settings survive restarts
+    try { setSystemConfig('engine', JSON.stringify(v.value)); } catch { /* noop */ }
+    const out = {};
+    for (const key of Object.keys(ENGINE_CONFIG_SCHEMA)) {
+      if (scheduler.config[key] !== undefined) out[key] = scheduler.config[key];
+    }
+    res.json({ success: true, config: out });
   });
 
   // -----------------------------------------------------------------------
@@ -936,7 +938,14 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     const level = req.query.level;
     try {
       const logFile = path.join(__dirname, '..', 'logs', 'combined.log');
-      const content = fs.readFileSync(logFile, 'utf8');
+      // Tail-read: only the last ~2MB instead of slurping the whole file
+      const stat = fs.statSync(logFile);
+      const fd = fs.openSync(logFile, 'r');
+      const tailSize = Math.min(stat.size, 2 * 1024 * 1024);
+      const buf = Buffer.alloc(tailSize);
+      fs.readSync(fd, buf, 0, tailSize, stat.size - tailSize);
+      fs.closeSync(fd);
+      const content = buf.toString('utf8');
       const lines = content.trim().split('\n').filter(Boolean);
       let filtered = lines;
       if (level) {
@@ -1716,7 +1725,6 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   });
 
   // -----------------------------------------------------------------------
-<<<<<<< HEAD
   // AI Behavior Director — plans HOW each visit behaves (persona, dwell,
   // scroll, hover, click intent). Providers: omniroute | ollama | openai
   // model gateways, with a deterministic heuristic fallback.
@@ -1771,19 +1779,21 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     res.json({ success: true, stats: freeProxyFetcher.getStats() });
   });
 
-  // Paid vs free composition snapshot
+  // Paid vs free composition snapshot (incl. archived free proxies)
   router.get('/proxies/sources', (req, res) => {
     const stats = freeProxyFetcher ? freeProxyFetcher.getStats() : { enabled: false };
+    const all = proxyManager?.getAll() || [];
     res.json({
       ...stats,
-      paid: (proxyManager?.getAll() || []).filter((p) => (p.source || 'webshare-legacy') !== 'free').length,
-      free: (proxyManager?.getAll() || []).filter((p) => (p.source || 'webshare-legacy') === 'free').length,
+      paid: all.filter((p) => (p.source || 'webshare-legacy') !== 'free').length,
+      free: all.filter((p) => (p.source || 'webshare-legacy') === 'free').length,
+      freeActive: all.filter((p) => p.source === 'free' && p.enabled && !p.archived).length,
+      archived: all.filter((p) => p.archived).length,
+      poolStats: proxyManager?.getStats?.() || null,
     });
   });
 
   // -----------------------------------------------------------------------
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
   // Wizard / Setup API — for easy configuration
   // -----------------------------------------------------------------------
   router.get('/wizard/status', (req, res) => {
@@ -2367,6 +2377,76 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
       res.json({ success: true, config: periodicHealthChecker.getStats() });
     });
   }
+
+  // -----------------------------------------------------------------------
+  // Observability — metrics (JSON / Prometheus text) + alerts
+  // -----------------------------------------------------------------------
+  router.get('/metrics', (req, res) => {
+    if (!observability) return res.status(404).json({ error: 'Observability not wired' });
+    if (req.query.format === 'prometheus') {
+      res.type('text/plain').send(observability.getPrometheusText());
+    } else {
+      res.json(observability.getMetrics());
+    }
+  });
+
+  router.get('/alerts', (req, res) => {
+    if (!observability) return res.status(404).json({ error: 'Observability not wired' });
+    res.json({ alerts: observability.getAlerts() });
+  });
+
+  router.post('/alerts/:id/ack', (req, res) => {
+    if (!observability) return res.status(404).json({ error: 'Observability not wired' });
+    const acked = observability.ackAlert(req.params.id);
+    if (!acked) return res.status(404).json({ error: 'Alert not found' });
+    res.json({ success: true, alert: acked });
+  });
+
+  // -----------------------------------------------------------------------
+  // Domain rules — per-domain rate limits, opt-outs, robots.txt
+  // -----------------------------------------------------------------------
+  router.get('/domain-rules', (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    res.json({ ...domainRules.getRules(), stats: domainRules.getStats() });
+  });
+
+  router.patch('/domain-rules', (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    domainRules.updateConfig(req.body || {});
+    res.json({ success: true, rules: domainRules.getRules() });
+  });
+
+  router.put('/domain-rules/:domain', (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    const rule = domainRules.setRule(req.params.domain, req.body || {});
+    res.json({ success: true, domain: req.params.domain, rule });
+  });
+
+  router.post('/domain-rules/opt-out', (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    const { domain } = req.body || {};
+    if (!domain) return res.status(400).json({ error: 'domain required' });
+    const rule = domainRules.setOptOut(domain, true);
+    res.json({ success: true, domain, rule });
+  });
+
+  router.delete('/domain-rules/opt-out/:domain', (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    const rule = domainRules.setOptOut(req.params.domain, false);
+    res.json({ success: true, domain: req.params.domain, rule });
+  });
+
+  router.post('/domain-rules/:domain/robots/refresh', async (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    const entry = await domainRules.fetchRobots(req.params.domain, { force: true });
+    res.json({ success: true, domain: req.params.domain, disallow: entry.parsed.disallow, allow: entry.parsed.allow, error: entry.fetchError });
+  });
+
+  router.get('/domain-rules/:domain/check', async (req, res) => {
+    if (!domainRules) return res.status(404).json({ error: 'Domain rules not wired' });
+    const url = req.query.url || `https://${req.params.domain}/`;
+    res.json(await domainRules.check(url));
+  });
 
   return router;
 }

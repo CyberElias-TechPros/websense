@@ -20,7 +20,7 @@ export class AnalyticsCompatibilityManager {
       sendSessionStart: true,
       sendEngagement: true,
       enhancedMeasurement: true,
-      consentMode: 'basic', // none | basic | advanced
+      consentMode: 'advanced', // none | basic | advanced — 'advanced' matches a real "Accept all" and lets AdSense render normally for verification
       ...config,
     };
     this.eventCount = 0;
@@ -191,12 +191,15 @@ export class AnalyticsCompatibilityManager {
     const consent = this.generateConsentPayload(consentMode);
 
     return `
-      // GA4 Consent Mode
-      ${consent ? `window.dataLayer = window.dataLayer || []; window.dataLayer = { consent: ${JSON.stringify(consent)} };` : ''}
+      // GA4 Consent Mode — dataLayer MUST remain an Array (gtag.js, GTM and
+      // third-party tag scripts call dataLayer.push()/forEach on it; assigning
+      // an object here breaks them and stops ads from rendering).
+      if (!Array.isArray(window.dataLayer)) window.dataLayer = [];
+      ${consent ? `window.dataLayer.push(['consent', 'default', ${JSON.stringify(consent)}]); window.dataLayer.push(['consent', 'update', ${JSON.stringify(consent)}]);` : ''}
 
       // GA4 gtag.js
       (function(w, d, s, l, i) {
-        w[l] = w[l] || [];
+        if (!Array.isArray(w[l])) w[l] = [];
         w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
         var f = d.getElementsByTagName(s)[0],
             j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : '';
@@ -206,8 +209,8 @@ export class AnalyticsCompatibilityManager {
       })(window, document, 'script', 'dataLayer', '${gaId}');
 
       // Page view event
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
+      if (!Array.isArray(window.dataLayer)) window.dataLayer = [];
+      function gtag(){ if (!Array.isArray(window.dataLayer)) window.dataLayer = []; window.dataLayer.push(arguments); }
       gtag('js', new Date());
       gtag('config', '${gaId}', { client_id: '${clientId}' });
       gtag('event', 'page_view', {

@@ -19,12 +19,34 @@ services:
       - PORT=3001
       - HOST=0.0.0.0
       # Copy your .env values here (or use a .env file at repo root)
-      - PROXY_USERNAME=${PROXY_USERNAME:-hmxpvtyv}
-      - PROXY_PASSWORD=${PROXY_PASSWORD:-s56i3b0mmjwv}
+      - PROXY_USERNAME=${PROXY_USERNAME:-}
+      - PROXY_PASSWORD=${PROXY_PASSWORD:-}
       - MIN_INTERVAL_MS=${MIN_INTERVAL_MS:-5000}
       - MAX_INTERVAL_MS=${MAX_INTERVAL_MS:-30000}
       - CONCURRENCY=${CONCURRENCY:-3}
       - DEMO_MODE=${DEMO_MODE:-0}
+      # Free-proxy pipeline + AI director + domain rules + observability + auth
+      - FREE_PROXIES=${FREE_PROXIES:-1}
+      - FREE_PROXY_MAX=${FREE_PROXY_MAX:-5000}
+      - FREE_PROXY_REFRESH_HOURS=${FREE_PROXY_REFRESH_HOURS:-6}
+      - FREE_PROXY_ARCHIVE_AFTER_FAILURES=${FREE_PROXY_ARCHIVE_AFTER_FAILURES:-5}
+      - FREE_PROXY_INSECURE_TLS=${FREE_PROXY_INSECURE_TLS:-0}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_OPENAI_BASE_URL=${AI_OPENAI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-8000}
+      - OMNIROUTE_URL=${OMNIROUTE_URL:-}
+      - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY:-}
+      - OMNIROUTE_MODEL=${OMNIROUTE_MODEL:-}
+      - DOMAIN_RULES_ENABLED=${DOMAIN_RULES_ENABLED:-1}
+      - RESPECT_ROBOTS=${RESPECT_ROBOTS:-1}
+      - DOMAIN_OPT_OUTS=${DOMAIN_OPT_OUTS:-}
+      - OBSERVABILITY=${OBSERVABILITY:-1}
+      - ALERT_ERROR_RATE=${ALERT_ERROR_RATE:-0.30}
+      - ALERT_DETECTION_SIGNALS=${ALERT_DETECTION_SIGNALS:-8}
+      - DB_CLEANUP_DAYS=${DB_CLEANUP_DAYS:-30}
+      - API_TOKEN=${API_TOKEN:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]

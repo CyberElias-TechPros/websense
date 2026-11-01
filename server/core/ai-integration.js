@@ -15,14 +15,11 @@ export class AIIntegration {
       ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
       defaultModel: process.env.OLLAMA_MODEL || 'llama3.1',
       timeout: 30000,
-<<<<<<< HEAD
       // OmniRoute / OpenAI-compatible support
       provider: process.env.AI_PROVIDER || process.env.OMNIROUTE_PROVIDER || 'ollama',
       openaiUrl: process.env.OPENAI_COMPAT_URL || process.env.OMNIROUTE_URL || 'http://localhost:20128/v1',
       openaiKey: process.env.OPENAI_API_KEY || process.env.OMNIROUTE_API_KEY || process.env.AI_API_KEY || '',
       openaiModel: process.env.OPENAI_MODEL || process.env.OMNIROUTE_MODEL || 'openai/gpt-4o-mini',
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       ...config,
     };
     this.models = [];
@@ -33,7 +30,6 @@ export class AIIntegration {
    * Check if Ollama is available.
    */
   async checkAvailable() {
-<<<<<<< HEAD
     // Try OpenAI-compatible first if configured
     if (this.config.provider === 'openai' || this.config.provider === 'omniroute') {
       try {
@@ -51,8 +47,6 @@ export class AIIntegration {
       }
     }
     // Fall back to Ollama
-=======
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     try {
       const response = await axios.get(`${this.config.ollamaUrl}/api/tags`, {
         timeout: 5000,
@@ -73,7 +67,6 @@ export class AIIntegration {
   /**
    * Generate a response from Ollama.
    */
-<<<<<<< HEAD
   async generate(prompt, model = null, timeout = null) {
     if (!this.available) await this.checkAvailable();
     if (!this.available) return null;
@@ -100,12 +93,6 @@ export class AIIntegration {
       }
     }
 
-=======
-  async generate(prompt, model = null) {
-    if (!this.available) await this.checkAvailable();
-    if (!this.available) return null;
-
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     try {
       const response = await axios.post(
         `${this.config.ollamaUrl}/api/generate`,
@@ -114,11 +101,7 @@ export class AIIntegration {
           prompt,
           stream: false,
         },
-<<<<<<< HEAD
         { timeout: timeout || this.config.timeout }
-=======
-        { timeout: this.config.timeout }
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       );
       return response.data?.response || null;
     } catch (err) {
@@ -130,7 +113,6 @@ export class AIIntegration {
   /**
    * Chat with Ollama.
    */
-<<<<<<< HEAD
   async chat(messages, model = null, timeout = null) {
     if (!this.available) await this.checkAvailable();
     if (!this.available) return null;
@@ -156,12 +138,6 @@ export class AIIntegration {
       }
     }
 
-=======
-  async chat(messages, model = null) {
-    if (!this.available) await this.checkAvailable();
-    if (!this.available) return null;
-
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
     try {
       const response = await axios.post(
         `${this.config.ollamaUrl}/api/chat`,
@@ -170,11 +146,7 @@ export class AIIntegration {
           messages,
           stream: false,
         },
-<<<<<<< HEAD
         { timeout: timeout || this.config.timeout }
-=======
-        { timeout: this.config.timeout }
->>>>>>> b99e6874ed35a4bfe1ffef506c3d9abe1b6f023a
       );
       return response.data?.message?.content || null;
     } catch (err) {
