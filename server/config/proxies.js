@@ -171,9 +171,16 @@ export const PROXIES = [
  * Build the full proxy objects with credentials attached.
  */
 export function buildProxyList(proxyAuth) {
+  // Webshare proxies are SOCKS5 endpoints — the protocol MUST be recorded per
+  // proxy, because the network layer picks the agent from it (HTTP CONNECT vs
+  // SOCKS5 handshake) and Chrome gets --proxy-server=socks5://... Using the
+  // wrong protocol makes every paid-proxy visit fail with 407/tunnel errors.
+  // Override globally with WEBSHARE_PROTOCOL (http|socks5) or per entry via
+  // `type` in the PROXIES list above.
+  const webshareProtocol = (process.env.WEBSHARE_PROTOCOL || 'socks5').toLowerCase();
   return PROXIES.map((p) => ({
     ...p,
-    type: p.type || 'http',
+    type: p.type || (webshareProtocol === 'socks' ? 'socks5' : webshareProtocol),
     source: 'webshare', // paid pool — user's Webshare subscription (~100 proxies)
     username: proxyAuth.username,
     password: proxyAuth.password,
