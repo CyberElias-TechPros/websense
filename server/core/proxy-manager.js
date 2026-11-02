@@ -60,22 +60,24 @@ export class ProxyManager {
     for (const col of [
       'ALTER TABLE proxy_stats ADD COLUMN archived INTEGER DEFAULT 0',
       "ALTER TABLE proxy_stats ADD COLUMN archive_reason TEXT DEFAULT NULL",
+      "ALTER TABLE proxy_stats ADD COLUMN type TEXT DEFAULT 'http'",
     ]) {
       try { db.exec(col); } catch { /* column already exists */ }
     }
     const upsert = db.prepare(`
-      INSERT INTO proxy_stats (host, port, country, city, flag, enabled, status)
-      VALUES (?, ?, ?, ?, ?, 1, 'unknown')
+      INSERT INTO proxy_stats (host, port, country, city, flag, type, enabled, status)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 'unknown')
       ON CONFLICT(host) DO UPDATE SET
         port = excluded.port,
         country = excluded.country,
         city = excluded.city,
         flag = excluded.flag,
+        type = excluded.type,
         enabled = CASE WHEN proxy_stats.enabled IS NULL THEN 1 ELSE proxy_stats.enabled END
     `);
     withTransaction(() => {
       for (const p of this.proxies) {
-        upsert.run(p.host, p.port, p.country, p.city, p.flag);
+        upsert.run(p.host, p.port, p.country, p.city, p.flag, p.type || 'http');
       }
     });
 
@@ -93,8 +95,22 @@ export class ProxyManager {
             : 0;
         p.archived = !!row.archived;
         if (p.archived) p.enabled = false;
+        // Persisted protocol (self-healed by the screener when a list lies)
+        if (row.type) p.type = row.type;
       }
     }
+    // Hydrate last screen result + blacklist flag (pre-flight gate state)
+    try {
+      for (const p of this.proxies) {
+        const s = db.prepare('SELECT score, pass, protocol, checked_at FROM proxy_screens WHERE host = ?').get(p.host);
+        if (s) {
+          p.screen = { pass: !!s.pass, score: s.score, protocol: s.protocol, checkedAt: s.checked_at };
+          p.screenedAt = s.checked_at ? Date.parse(s.checked_at.replace(' ', 'T') + 'Z') : 0;
+        }
+        p.blacklisted = !!db.prepare('SELECT 1 FROM proxy_blacklist WHERE host = ?').get(p.host);
+        if (p.blacklisted) { p.enabled = false; p.status = 'blacklisted'; }
+      }
+    } catch { /* tables may not exist yet */ }
   }
 
   // -----------------------------------------------------------------------
@@ -244,10 +260,88 @@ export class ProxyManager {
   }
 
   /** Pick a strategy by name, defaulting to random. */
+  // -----------------------------------------------------------------------
+  // Pre-flight screening gate (ProxyScreener). A proxy is only handed out for
+  // a visit when its latest screen PASSED within the TTL — selection prefers
+  // verified proxies, and visit-engine re-screens on demand before use.
+  // -----------------------------------------------------------------------
+  setScreener(screener) { this.screener = screener; }
+
+  /** Fresh, passing screen cached on the proxy? */
+  isScreenedOk(proxy) {
+    if (!this.screener || !this.screener.config.enabled) return false;
+    if (!proxy || !proxy.screen || !proxy.screen.pass || !proxy.screenedAt) return false;
+    if (proxy.blacklisted || proxy.archived || !proxy.enabled) return false;
+    return Date.now() - proxy.screenedAt < this.screener.config.ttlMs;
+  }
+
+  /**
+   * Ensure a proxy has a fresh PASSING screen, screening it now if needed.
+   * Returns true only when the proxy is verified usable.
+   */
+  async ensureScreened(proxy) {
+    if (!this.screener || !this.screener.config.enabled) return true; // gate off → legacy behavior
+    if (this.isScreenedOk(proxy)) return true;
+    if (proxy.blacklisted || proxy.archived) return false;
+    const report = await this.screener.screen(proxy);
+    return !!report.pass;
+  }
+
+  /**
+   * Background sweep: full pre-flight screen of a rotating window (never the
+   * archived/blacklisted). Falls back to plain health checks without a screener.
+   */
+  async screenBatch(batchSize = 100, concurrency = 25) {
+    if (!this.screener || !this.screener.config.enabled) {
+      return this.healthCheckBatch(batchSize, concurrency);
+    }
+    const candidates = this.proxies.filter((p) => !p.archived && !p.blacklisted);
+    if (!candidates.length) return [];
+    this._healthWindow = this._healthWindow || 0;
+    const slice = [];
+    for (let i = 0; i < Math.min(batchSize, candidates.length); i++) {
+      slice.push(candidates[(this._healthWindow + i) % candidates.length]);
+    }
+    this._healthWindow = (this._healthWindow + slice.length) % candidates.length;
+    const results = await this._mapLimit(slice, concurrency, async (p) => {
+      const report = await this.screener.screen(p);
+      if (!report.pass) this.recordFailure(p, `screen_failed:${report.reasons[0] || 'low_score'}`);
+      else this.recordSuccess(p, report.latencyMs || 0);
+      return report;
+    });
+    return results.map((r) => (r.status === 'fulfilled' ? r.value : { host: null, pass: false, reasons: [String(r.reason)] }));
+  }
+
+  // Blacklist delegation (local persistent blacklist lives in the screener)
+  blacklistProxy(host, reason = 'manual') {
+    if (this.screener) return this.screener.blacklist(host, reason);
+    const p = this.proxies.find((x) => x.host === host);
+    if (p) { p.blacklisted = true; p.enabled = false; p.status = 'blacklisted'; }
+    return !!p;
+  }
+  unblacklistProxy(host) {
+    if (this.screener) return this.screener.unblacklist(host);
+    return false;
+  }
+  isBlacklisted(host) { return this.screener ? this.screener.isBlacklisted(host) : false; }
+  listBlacklist() { return this.screener ? this.screener.listBlacklist() : []; }
+
   select(strategy = 'random', opts = {}) {
     // Soft geo-match: when the caller passes preferCountry (derived from the
     // fingerprint's locale), try to honor it for the common strategies.
     const useGeoMatch = strategy === 'geo-match' || (opts.preferCountry && opts.geoMatch !== false);
+    // PRE-FLIGHT: prefer proxies with a fresh passing screen when any exist.
+    if (this.screener?.config.enabled && this.screener.config.requirePass !== false) {
+      const active = this.getActiveProxies().filter((p) => !p.blacklisted);
+      const verified = active.filter((p) => this.isScreenedOk(p));
+      if (verified.length) {
+        const geoPool = useGeoMatch && opts.preferCountry
+          ? verified.filter((p) => (p.country || '').toUpperCase() === opts.preferCountry)
+          : verified;
+        const pool = geoPool.length ? geoPool : verified;
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+    }
     switch (strategy) {
       case 'geo-match':
         return this.getGeoMatched(opts.preferCountry);
@@ -311,6 +405,21 @@ export class ProxyManager {
       !proxy.archived
     ) {
       this.archiveProxy(proxy.host, `consecutive_failures:${proxy.consecutiveFailures}`);
+    }
+
+    // Auto-BLACKLIST: a proxy that keeps triggering detection/block responses
+    // is a bad proxy — pull it permanently (free/manual only; paid Webshare is
+    // never blacklisted automatically).
+    const screenCfg = this.screener?.config || {};
+    const autoAfter = screenCfg.autoBlacklistAfter ?? 0;
+    if (
+      autoAfter > 0 &&
+      proxy.source !== 'webshare' &&
+      /detect|block|403|429|captcha|bot/i.test(errorType || '') &&
+      proxy.consecutiveFailures >= autoAfter &&
+      !proxy.blacklisted
+    ) {
+      this.blacklistProxy(proxy.host, `repeated detection/block (${errorType}, ${proxy.consecutiveFailures}x)`);
     }
 
     db.prepare(`
@@ -554,6 +663,11 @@ export class ProxyManager {
       type: p.type || 'http',
       source: p.source || 'webshare-legacy',
       enabled: p.enabled,
+      archived: !!p.archived,
+      blacklisted: !!p.blacklisted,
+      screen: p.screen
+        ? { pass: !!p.screen.pass, score: p.screen.score, protocol: p.screen.protocol, checkedAt: p.screen.checkedAt }
+        : null,
       status: p.status,
       successCount: p.successCount,
       failCount: p.failCount,

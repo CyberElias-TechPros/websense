@@ -457,3 +457,50 @@ and no performance traps
 - PATCH /api/config (validated, persisted) · GET /api/config (schema keys only)
 - POST /api/proxies · POST /api/urls (400 + details on invalid input)
 - GET /api/visits?status=success|failed|skipped · GET /api/logs (tail)
+
+---
+
+## User Story 19: Test every proxy before it is ever used
+**As an** operator
+**I want** every proxy screened before any request goes through it — real protocol,
+working tunnel, exit country, anonymity, blacklist status, and stability —
+**So that** no visit is ever wasted through a dead, mislabeled, leaking, or
+blacklisted proxy
+
+### Pre-flight screen flow (per proxy, cached PROXY_SCREEN_TTL_MS=30min, persisted)
+1. **Protocol detection** — talk to the port: SOCKS5 greeting (with user/pass auth
+   when creds exist) → HTTP CONNECT → SOCKS4. Detected protocol is stored on the
+   proxy (`proxy.type` self-heals mislabeled list entries) and drives agent
+   choice (`SocksProxyAgent` vs `Http/HttpsProxyAgent`) and Chrome's
+   `--proxy-server` scheme
+2. **Tunnel probe** — real request through the detected protocol to IP-echo
+   endpoints → exit IP + latency; `407` reported distinctly (proxy alive, creds
+   missing/rejected)
+3. **Anonymity** — headers echo: `X-Forwarded-For`/`X-Real-IP`/`Forwarded` leak →
+   transparent (hard fail); `Via` only → anonymous; neither → elite
+4. **Geo** — exit IP geolocated (ip-api, fail-open) vs declared country; mismatch = hard fail
+5. **Blacklist** — persisted local `proxy_blacklist` + optional DNSBL
+   (`PROXY_DNSBL=1`); repeated detection/block failures auto-blacklist
+   free/manual proxies (paid Webshare never)
+6. **Stability** — success rate, avg latency, consecutive failures, circuit
+   breaker, archived → quality score
+7. **Score 0–100 vs PROXY_SCREEN_MIN_SCORE (40)** → PASS/FAIL; only fresh PASSes
+   are handed out (`select()` prefers them)
+
+### Use-time gate (visit-engine)
+Before any request: `ensureScreened(proxy)` — cached pass, else screen now. On
+fail → `recordFailure('screen_failed')` → try another proxy (≤3). If none pass,
+the visit is **skipped** (`skipped=1, skip_reason='no_verified_proxy'`, persisted,
+metrics) instead of burning a request through a bad proxy.
+
+### Background + onboarding
+- The 60s background sweep is now a rotating window of **full screens**
+  (`screenBatch`, default 100/batch, concurrency 25; archived/blacklisted skipped)
+- Free-proxy fetcher probe sampling also detects each sampled proxy's real
+  protocol and stores it
+
+### API Endpoints
+- POST /api/proxies/:host/screen (full report) · GET /api/proxies/:host/screen (last)
+- POST /api/proxies/screen {limit, concurrency} (batch) · GET /api/proxies/blacklist
+- POST/DELETE /api/proxies/:host/blacklist
+- Proxies UI: Pre-flight column (✅/❌ score), per-row Screen (🛡) + blacklist (🚫), Screen All

@@ -505,6 +505,42 @@ export class VisitEngine {
       return { success: false, error: 'No active proxy', visitId, timestamp: new Date().toISOString() };
     }
 
+    // ── PRE-FLIGHT GATE ────────────────────────────────────────────────────
+    // No request is sent through a proxy until it has PASSED a screen
+    // (protocol detected, tunnel works, not blacklisted, quality score ok).
+    // A failed candidate is recorded and replaced; if none verify, the visit
+    // is skipped instead of burning a request through a bad proxy.
+    if (this.proxyManager.ensureScreened && this.config.demoMode !== true) {
+      const tried = new Set();
+      let verified = false;
+      for (let attempt = 0; attempt < 3 && !verified; attempt++) {
+        if (!proxy || tried.has(proxy.id || proxy.host)) {
+          proxy = this.proxyManager.select(options.proxyStrategy || 'random', { preferCountry, geoMatch: this.config.geoMatchProxies !== false });
+          if (!proxy || tried.has(proxy.id || proxy.host)) break;
+        }
+        tried.add(proxy.id || proxy.host);
+        if (!proxy.enabled || proxy.archived || proxy.blacklisted) { proxy = null; continue; }
+        verified = await this.proxyManager.ensureScreened(proxy);
+        if (!verified) {
+          logger.warn(`🧪 Pre-flight screen failed for ${proxy.host}:${proxy.port} (${proxy.screen?.reasons?.join('; ') || 'unknown'}) — trying another proxy`);
+          this.proxyManager.recordFailure(proxy, 'screen_failed');
+          this.observability?.recordProxyScreen?.(proxy, proxy.screen);
+          proxy = null;
+        }
+      }
+      if (!verified || !proxy) {
+        const result = {
+          visitId, success: false, skipped: true, reason: 'no_verified_proxy',
+          url: urlEntry.url, subdomain: urlEntry.subdomain,
+          mode: this.config.mode, timestamp: new Date().toISOString(),
+        };
+        this._persist(result);
+        this.observability?.recordVisit(result);
+        logger.error('⏭️ Skipped: no proxy passed the pre-flight screen');
+        return result;
+      }
+    }
+
     // Record the domain visit for rate limiting (attempt counts, not just success)
     this.domainRules?.recordVisit(urlEntry.url);
 

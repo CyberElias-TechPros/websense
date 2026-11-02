@@ -27,6 +27,7 @@ import axios from 'axios';
 import zlib from 'zlib';
 import net from 'net';
 import https from 'https';
+import db from '../database/db.js';
 import logger from '../utils/logger.js';
 
 // Optional: tolerate self-signed/MITM CA certs (e.g. corporate proxies or
@@ -203,6 +204,7 @@ export function buildGeoMap(jsonBody) {
 export class FreeProxyFetcher {
   constructor(proxyManager, options = {}) {
     this.proxyManager = proxyManager;
+    this.screener = null; // ProxyScreener — protocol detection at probe time
     this.config = {
       enabled: process.env.FREE_PROXIES !== '0',
       max: parseInt(process.env.FREE_PROXY_MAX || '5000', 10), // cap so rotation stays workable
@@ -233,6 +235,11 @@ export class FreeProxyFetcher {
   /** Attach the observability hub so every refresh report feeds metrics/alerts. */
   setObservability(obs) {
     this.observability = obs;
+  }
+
+  /** Attach the pre-flight screener so probe sampling also detects real protocol. */
+  setScreener(screener) {
+    this.screener = screener;
   }
 
   // -- HTTP helpers ---------------------------------------------------------
@@ -319,6 +326,28 @@ export class FreeProxyFetcher {
     const worker = async () => {
       while (idx < sample.length) {
         const p = sample[idx++];
+        // PRE-FLIGHT on the sample: detect the REAL protocol (lists mislabel
+        // http/socks constantly) — this decides which agent/tunnel we use.
+        if (this.screener && typeof this.screener.detectProtocol === 'function') {
+          try {
+            const det = await this.screener.detectProtocol(p, this.config.probeTimeoutMs);
+            if (det) {
+              p.type = det.protocol === 'socks' ? 'socks5' : det.protocol;
+              p.probeProtocol = p.type;
+              if (p.type !== (p._listedType || p.type)) {
+                try {
+                  db.prepare('UPDATE proxy_stats SET type = ? WHERE host = ?').run(p.type, p.host);
+                } catch { /* noop */ }
+              }
+            } else {
+              p.probeResult = 'dead';
+              if (p.source === 'free' && typeof this.proxyManager.toggleProxy === 'function') {
+                try { this.proxyManager.toggleProxy(p.host, false); } catch { /* noop */ }
+              }
+              continue;
+            }
+          } catch { /* fall through to TCP probe */ }
+        }
         const ok = await this._tcpProbe(p.host, p.port, this.config.probeTimeoutMs);
         if (ok) {
           alive++;

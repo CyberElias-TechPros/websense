@@ -20,6 +20,7 @@ import { buildProxyList } from './config/proxies.js';
 import { TARGET_URLS } from './config/urls.js';
 import ProxyManager from './core/proxy-manager.js';
 import ProxyEvaluator from './core/proxy-evaluator.js';
+import ProxyScreener from './core/proxy-screener.js';
 import ProxyStrategies from './core/proxy-strategies.js';
 import ProxyIntegrations, { fetchProxiesFromProvider, getAvailableProviders } from './core/proxy-integrations.js';
 import AIIntegration from './core/ai-integration.js';
@@ -141,6 +142,10 @@ if (API_TOKEN) {
 // ---------------------------------------------------------------------------
 const proxies = buildProxyList(config.proxyAuth);
 const proxyManager = new ProxyManager(proxies, config.healthCheck);
+// Pre-flight screener — every proxy is screened (protocol/tunnel/geo/blacklist/
+// stability) BEFORE it is used for a visit; results cached + persisted.
+const proxyScreener = new ProxyScreener(proxyManager, config.proxyScreen);
+proxyManager.setScreener(proxyScreener);
 const proxyEvaluator = new ProxyEvaluator(proxyManager, config.proxyEvaluator);
 const proxyStrategies = new ProxyStrategies(proxyManager, proxyEvaluator, config.proxyStrategies);
 const proxyIntegrations = new ProxyIntegrations(proxyManager, proxyEvaluator);
@@ -199,6 +204,7 @@ behaviorDirector.init().catch(() => {});
 // Re-probe every 10 min so a newly started OmniRoute/Ollama is picked up.
 setInterval(() => { behaviorDirector.init().catch(() => {}); }, 10 * 60 * 1000);
 const freeProxyFetcher = new FreeProxyFetcher(proxyManager, config.freeProxies);
+freeProxyFetcher.setScreener(proxyScreener); // probe sampling detects real protocol
 freeProxyFetcher.startAutoRefresh(); // delayed initial fetch + periodic refresh
 // Observability hub — metrics + alerts (fed by refreshes, visits, AI stats)
 const observability = new ObservabilityHub(config.observability);
@@ -334,7 +340,7 @@ logger.info(`🔗 Loaded ${TARGET_URLS.length} target URLs`);
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
-app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector, domainRules, observability));
+app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector, domainRules, observability, proxyScreener));
 
 // --- Health check endpoint ---
 app.get('/health', (req, res) =>
@@ -372,11 +378,12 @@ io.on('connection', (socket) => {
 // Periodic health checks + observability tick + auto-start
 // ---------------------------------------------------------------------------
 if (config.healthCheck.interval > 0) {
-  // Batched rotating window (not the whole pool at once — with thousands of
-  // free proxies a full sweep every interval would saturate sockets/CPU).
+  // Batched rotating window of FULL pre-flight screens (not the whole pool at
+  // once — with thousands of free proxies a full sweep would saturate sockets).
+  // Falls back to plain health checks when screening is disabled.
   setInterval(() => {
-    proxyManager.healthCheckBatch(config.healthCheck.batchSize || 100, config.healthCheck.batchConcurrency || 25)
-      .catch((err) => logger.warn(`Background health check failed: ${err.message}`));
+    proxyManager.screenBatch(config.healthCheck.batchSize || 100, config.healthCheck.batchConcurrency || 25)
+      .catch((err) => logger.warn(`Background proxy screen failed: ${err.message}`));
   }, config.healthCheck.interval);
 }
 
