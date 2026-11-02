@@ -52,6 +52,29 @@ export default {
   },
 
   // -------------------------------------------------------------------------
+  // VPN tunnel (OS-level) — visits can ride the tunnel and are BLOCKED while
+  // it is down (leak protection), so traffic never falls back to your real IP.
+  // type: external (your own VPN app — we just verify exit IP) |
+  //       openvpn  (we spawn `openvpn --config <file>`) |
+  //       wireguard (`sudo -n wg-quick up/down <iface>`)
+  // -------------------------------------------------------------------------
+  vpn: {
+    enabled: process.env.VPN_ENABLED === '1',
+    type: (process.env.VPN_TYPE || 'external').toLowerCase(), // external | openvpn | wireguard
+    configPath: process.env.VPN_CONFIG_PATH || '',   // .ovpn file or .conf
+    interface: process.env.VPN_INTERFACE || '',       // wg interface name
+    authUser: process.env.VPN_AUTH_USER || '',
+    authPass: process.env.VPN_AUTH_PASS || '',
+    verifyUrl: process.env.VPN_VERIFY_URL || 'https://api.ipify.org?format=json',
+    verifyTimeoutMs: parseInt(process.env.VPN_VERIFY_TIMEOUT_MS || '8000', 10),
+    verifyIntervalMs: parseInt(process.env.VPN_VERIFY_INTERVAL_MS || '30000', 10),
+    expectedExitIp: process.env.VPN_EXPECTED_EXIT_IP || '',
+    leakProtection: process.env.VPN_LEAK_PROTECTION !== '0',
+    requiredForVisits: process.env.VPN_REQUIRED_FOR_VISITS !== '0',
+    allowDirectVisits: process.env.VPN_ALLOW_DIRECT_VISITS === '1',
+  },
+
+  // -------------------------------------------------------------------------
   // Free proxy aggregation (GitHub repos: proxifly, TheSpeedX, monosans, …)
   // Merged into the pool alongside the paid Webshare proxies.
   // -------------------------------------------------------------------------

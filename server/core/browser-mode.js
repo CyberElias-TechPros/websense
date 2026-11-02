@@ -1979,8 +1979,10 @@ export async function runBrowserVisit({
   // NOTE: Chrome's --proxy-server flag does NOT support credentials
   // (userinfo → net::ERR_NO_SUPPORTED_PROXIES). Credentials are applied
   // after launch via page.authenticate() instead.
-  const proxyType = proxy.type === 'socks5' || proxy.type === 'socks' ? 'socks5' : 'http';
-  const proxyServerUrl = `${proxyType}://${proxy.host}:${proxy.port}`;
+  // proxy === null → DIRECT connection (used when a VPN tunnel is up and the
+  // visit is allowed to ride it without a proxy).
+  const proxyType = !proxy ? null : (proxy.type === 'socks5' || proxy.type === 'socks' ? 'socks5' : 'http');
+  const proxyServerUrl = proxy ? `${proxyType}://${proxy.host}:${proxy.port}` : null;
 
   // Get or create persistent fingerprint
   const sessionFp = sessionPersistence ? await sessionPersistence.getOrCreateFingerprint(seed) : { profile: fp, isNew: true };
@@ -2015,7 +2017,7 @@ export async function runBrowserVisit({
       '--use-fake-device-for-media-stream',
       '--use-fake-ui-for-media-stream',
       '--enable-features=NetworkServiceInProcess2',
-      `--proxy-server=${proxyServerUrl}`,
+      ...(proxyServerUrl ? [`--proxy-server=${proxyServerUrl}`] : []),
       ...(headless === false ? [`--window-size=${profile.screen.w},${profile.screen.h}`] : []),
     ],
   };
@@ -2059,7 +2061,7 @@ export async function runBrowserVisit({
     const page = await context.newPage();
 
     // Proxy credentials (Chrome's --proxy-server can't carry user:pass)
-    if (proxy.username) {
+    if (proxy?.username) {
       await page.authenticate({ username: proxy.username, password: proxy.password });
     }
 

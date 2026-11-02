@@ -3993,6 +3993,30 @@ runs the server:
   unavailable. Missing puppeteer/Chrome never crashes the app — browser visits
   just fail with a clear error.
 
+### 🔌 VPN tunnel (optional, leak-protected)
+The app can ride an OS-level VPN tunnel so visits egress through it — with
+**leak protection**: while a required tunnel is down, every visit is skipped
+(`skip_reason: 'vpn_down'`) and the engine is paused, so traffic never silently
+falls back to your real IP. Three connection types (`VPN_TYPE`):
+
+- **`external`** (default) — connect with your own VPN app (NordVPN,
+  WireGuard GUI, corporate client…) and the app just verifies the exit IP
+  (`VPN_VERIFY_URL`, optional pin `VPN_EXPECTED_EXIT_IP`, re-checked every
+  `VPN_VERIFY_INTERVAL_MS` and on demand via `POST /api/vpn/verify`).
+- **`openvpn`** — the server spawns `openvpn --config <VPN_CONFIG_PATH>` and
+  waits for `Initialization Sequence Completed`; auth via `VPN_AUTH_USER` /
+  `VPN_AUTH_PASS` is written to a 0600 temp file (never logged) and removed on
+  disconnect. Torn down cleanly on shutdown.
+- **`wireguard`** — `sudo -n wg-quick up/down <VPN_INTERFACE>` (config file
+  basename by default). If passwordless sudo isn't allowed, the error says so;
+  either grant `sudo -n` for `wg-quick` or use `external` mode.
+
+API: `GET /api/vpn/status` · `GET|PATCH /api/vpn/config` · `POST /api/vpn/connect`
+· `POST /api/vpn/disconnect` · `POST /api/vpn/verify` (also a **VPN Tunnel**
+panel in Settings with Connect/Disconnect/Verify buttons and live exit-IP).
+`VPN_ALLOW_DIRECT_VISITS=1` additionally allows proxy-less visits that ride the
+tunnel directly (browser mode launches Chrome without `--proxy-server`).
+
 ---
 
 ## 🤖 AI Behavior Director (OmniRoute / Ollama / any OpenAI-compatible AI)

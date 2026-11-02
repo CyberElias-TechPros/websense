@@ -77,6 +77,7 @@ export class VisitEngine {
   setDomainRules(domainRules) { this.domainRules = domainRules; }
   setObservability(obs) { this.observability = obs; }
   setFreeProxyFetcher(f) { this.freeProxyFetcher = f; }
+  setVpnManager(vpn) { this.vpnManager = vpn; }
 
   /** Derive the expected proxy country from a fingerprint locale (en-GB → GB). */
   _preferCountryForFp(fp) {
@@ -184,7 +185,7 @@ export class VisitEngine {
     }
 
     // Geo-matched Accept-Language header (F2.5)
-    const geoHeaders = this.geoManager?.generateHeaders(proxy.country) || {};
+    const geoHeaders = this.geoManager?.generateHeaders(proxy?.country) || {};
     const acceptLanguage = geoHeaders['Accept-Language'] || (fp.locale ? `${fp.locale}, ${fp.locale.split('-')[0]};q=0.9` : 'en-US,en;q=0.9');
 
     // A/B testing URL transformation (F3.2)
@@ -215,7 +216,7 @@ export class VisitEngine {
           // NOTE: tls-client@0.0.5 exposes Session({clientIdentifier}) +
           //       executeRequest(method, url, opts). The proxy is passed per
           //       request (with credentials) — not in the constructor.
-          const proxyUrl = this.proxyManager.createProxyUrl(proxy);
+          const proxyUrl = proxy ? this.proxyManager.createProxyUrl(proxy) : undefined;
           const session = new tlsClient.Session({
             clientIdentifier: this._getTlsFingerprint(fp),
           });
@@ -250,7 +251,7 @@ export class VisitEngine {
               ...(referrer && { 'Referer': referrer }),
             }, fp.browser),
             ...(cookieObj && Object.keys(cookieObj).length ? { cookies: cookieObj } : {}),
-            proxy: proxyUrl,
+            ...(proxyUrl ? { proxy: proxyUrl } : {}), // omitted → direct (VPN tunnel)
             timeoutSeconds: Math.max(1, Math.ceil(timeout / 1000)),
             allowRedirects: true,
           });
@@ -301,10 +302,10 @@ export class VisitEngine {
           };
         } else {
           // --- axios fallback path ---
-          const agent = this.proxyManager.createAgent(
-            proxy,
-            targetUrl.startsWith('https')
-          );
+          // proxy === null → direct connection (VPN tunnel carries it)
+          const agent = proxy
+            ? this.proxyManager.createAgent(proxy, targetUrl.startsWith('https'))
+            : undefined;
           const response = await axios.get(targetUrl, {
             httpsAgent: agent,
             httpAgent: agent,
@@ -446,6 +447,21 @@ export class VisitEngine {
     }
 
     // --- Real visit ---
+    // ── VPN LEAK GUARD ──────────────────────────────────────────────────────
+    // If a VPN tunnel is required and not verified up, SKIP the visit instead
+    // of leaking traffic from the real IP.
+    if (this.vpnManager?.blocksVisits?.()) {
+      const result = {
+        visitId, success: false, skipped: true, reason: 'vpn_down',
+        url: options.url || null,
+        mode: this.config.mode, timestamp: new Date().toISOString(),
+      };
+      this._persist(result);
+      this.observability?.recordVisit(result);
+      logger.warn('🔒 Skipped visit: VPN required but tunnel is down (leak protection)');
+      return result;
+    }
+
     // Caller-supplied URL/proxy win (session chains pass them per page, manual
     // visits too) — otherwise pick randomly. Without this, multi-page sessions
     // silently re-rolled a random proxy + URL on every page, breaking the
@@ -500,9 +516,16 @@ export class VisitEngine {
     if (!proxy) {
       proxy = this.proxyManager.select(options.proxyStrategy || 'random', { preferCountry, geoMatch: this.config.geoMatchProxies !== false });
     }
+    // VPN-direct: when the tunnel is up and direct visits are allowed, a visit
+    // with no proxy rides the VPN instead of failing on "no proxy".
+    const vpnDirect = !!(this.vpnManager?.isUp?.() && this.vpnManager.config.allowDirectVisits);
     if (!proxy) {
-      logger.error('No active proxy available — visit skipped');
-      return { success: false, error: 'No active proxy', visitId, timestamp: new Date().toISOString() };
+      if (vpnDirect) {
+        logger.info('🔌 No proxy selected — visit goes DIRECT through the VPN tunnel');
+      } else {
+        logger.error('No active proxy available — visit skipped');
+        return { success: false, error: 'No active proxy', visitId, timestamp: new Date().toISOString() };
+      }
     }
 
     // ── PRE-FLIGHT GATE ────────────────────────────────────────────────────
@@ -510,7 +533,9 @@ export class VisitEngine {
     // (protocol detected, tunnel works, not blacklisted, quality score ok).
     // A failed candidate is recorded and replaced; if none verify, the visit
     // is skipped instead of burning a request through a bad proxy.
-    if (this.proxyManager.ensureScreened && this.config.demoMode !== true) {
+    // (Skipped entirely for proxy-less VPN-direct visits — there is no proxy
+    // to screen; the tunnel itself was verified by the VPN manager.)
+    if (proxy && this.proxyManager.ensureScreened && this.config.demoMode !== true) {
       const tried = new Set();
       let verified = false;
       for (let attempt = 0; attempt < 3 && !verified; attempt++) {
@@ -600,20 +625,21 @@ export class VisitEngine {
 
       this.visitCount++;
       this.failCount++;
-      this.proxyManager.recordFailure(proxy, classification.type);
+      if (proxy) this.proxyManager.recordFailure(proxy, classification.type);
       this.urlManager.recordVisit(urlEntry.url, false);
 
       // Sprint 3: flag proxy if detection/block
-      if (this.proxyIntelligence && (classification.type === 'proxy' || classification.message.includes('403') || classification.message.includes('blocked'))) {
+      if (proxy && this.proxyIntelligence && (classification.type === 'proxy' || classification.message.includes('403') || classification.message.includes('blocked'))) {
         this.proxyIntelligence.flagDetection(proxy, classification.type);
       }
 
+      const proxyInfo = proxy ? { host: proxy.host, country: proxy.country, city: proxy.city, flag: proxy.flag } : null;
       const result = {
         visitId,
         success: false,
         url: finalUrl,
         subdomain: urlEntry.subdomain,
-        proxy: { host: proxy.host, country: proxy.country, city: proxy.city, flag: proxy.flag },
+        proxy: proxyInfo,
         statusCode: err.response?.status || 0,
         latency,
         userAgent,
@@ -627,7 +653,7 @@ export class VisitEngine {
       this._persist(result);
       this.observability?.recordVisit(result);
       logger.warn(
-        `❌ Visit #${this.visitCount}: ${urlEntry.subdomain} via ${proxy.flag} ${proxy.city} (${latency}ms) [${classification.type}] ${classification.message}`
+        `❌ Visit #${this.visitCount}: ${urlEntry.subdomain} via ${proxy ? `${proxy.flag} ${proxy.city}` : '🔌 VPN direct'} (${latency}ms) [${classification.type}] ${classification.message}`
       );
       return result;
     }
@@ -636,23 +662,24 @@ export class VisitEngine {
     const latency = outcome.latency ?? Date.now() - start;
     this.visitCount++;
     this.successCount++;
-    this.proxyManager.recordSuccess(proxy, latency);
+    if (proxy) this.proxyManager.recordSuccess(proxy, latency);
     this.urlManager.recordVisit(urlEntry.url, true);
 
     // Sprint 3: update proxy trust score
-    if (this.proxyIntelligence) {
+    if (proxy && this.proxyIntelligence) {
       this.proxyIntelligence.updateTrustScore(proxy, {
         latency,
         success: 1,
       });
     }
 
+    const proxyInfo = proxy ? { host: proxy.host, country: proxy.country, city: proxy.city, flag: proxy.flag } : null;
     const result = {
       visitId,
       success: true,
       url: finalUrl,
       subdomain: urlEntry.subdomain,
-      proxy: { host: proxy.host, country: proxy.country, city: proxy.city, flag: proxy.flag },
+      proxy: proxyInfo,
       statusCode: outcome.statusCode,
       latency,
       userAgent,
@@ -670,7 +697,7 @@ export class VisitEngine {
     };
     this._persist(result);
     logger.info(
-      `✅ Visit #${this.visitCount}: ${urlEntry.subdomain} via ${proxy.flag} ${proxy.city} (${latency}ms) [${result.mode} | ${result.deviceType}]`
+      `✅ Visit #${this.visitCount}: ${urlEntry.subdomain} via ${proxy ? `${proxy.flag} ${proxy.city}` : '🔌 VPN direct'} (${latency}ms) [${result.mode} | ${result.deviceType}]`
     );
     return result;
   }
@@ -810,6 +837,7 @@ export class VisitEngine {
       uptime,
       mode: this.config.mode,
       browserMode: isBrowserModeAvailable(), // { available, reason } — is puppeteer+Chrome usable here?
+      vpn: this.vpnManager?.getStatus?.() || null, // tunnel state for the dashboard
       demoMode: this.config.demoMode,
       sessionMode: this.config.sessionMode,
       sessionCount: this.sessionCount || 0,

@@ -216,3 +216,11 @@ export const refreshRobots = (domain) => api.post(`/domain-rules/${encodeURIComp
 export const checkDomainRule = (domain, url) => api.get(`/domain-rules/${encodeURIComponent(domain)}/check`, { params: { url } });
 
 export default api;
+
+// VPN tunnel (external | openvpn | wireguard) — leak-protected visits
+export const getVpnStatus = () => api.get('/vpn/status');
+export const getVpnConfig = () => api.get('/vpn/config');
+export const updateVpnConfig = (patch) => api.patch('/vpn/config', patch);
+export const connectVpn = () => api.post('/vpn/connect');
+export const disconnectVpn = () => api.post('/vpn/disconnect');
+export const verifyVpn = () => api.post('/vpn/verify');

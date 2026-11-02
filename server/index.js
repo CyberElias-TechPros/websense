@@ -76,6 +76,7 @@ import SessionPersistence from './core/session-persistence.js';
 import FreeProxyFetcher from './core/free-proxy-fetcher.js';
 import AIBehaviorDirector from './core/ai-behavior-director.js';
 import DomainRulesManager from './core/domain-rules.js';
+import VPNManager from './core/vpn-manager.js';
 import ObservabilityHub from './core/observability.js';
 import { getRandomFingerprint } from './core/user-agents.js';
 import createRoutes from './api/routes.js';
@@ -222,6 +223,21 @@ visitEngine.setBehaviorDirector(behaviorDirector); // AI-directed human manneris
 visitEngine.setDomainRules(domainRules);
 visitEngine.setObservability(observability);
 visitEngine.setFreeProxyFetcher(freeProxyFetcher);
+// VPN tunnel manager — engine skips visits while a required tunnel is down
+// (leak protection); the scheduler is paused if the tunnel drops mid-run.
+const vpnManager = new VPNManager(config.vpn);
+visitEngine.setVpnManager(vpnManager);
+vpnManager.onStateChange((st) => {
+  io.emit('vpn:state', st);
+  if (vpnManager.blocksVisits() && scheduler?.state === 'running' && config.vpn.leakProtection) {
+    logger.warn('🔒 VPN tunnel down — pausing visit engine (leak protection)');
+    scheduler.pause();
+  }
+});
+if (config.vpn.enabled) {
+  vpnManager.startMonitoring();
+  if (config.vpn.type !== 'external') logger.info(`🔌 VPN configured (${config.vpn.type}) — connect via POST /api/vpn/connect or the dashboard`);
+}
 // Warn once if paid-proxy credentials are not configured (env-only now)
 if (!config.proxyAuth.username || !config.proxyAuth.password) {
   logger.warn('⚠️ PROXY_USERNAME/PROXY_PASSWORD not set — paid Webshare proxies will fail auth (set them in server/.env)');
@@ -345,7 +361,7 @@ logger.info(`🔗 Loaded ${TARGET_URLS.length} target URLs`);
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
-app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector, domainRules, observability, proxyScreener));
+app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector, domainRules, observability, proxyScreener, vpnManager));
 
 // --- Health check endpoint ---
 app.get('/health', (req, res) =>
@@ -434,6 +450,7 @@ if (config.observability?.enabled !== false) {
 function shutdown(signal) {
   logger.info(`${signal} received — shutting down...`);
   scheduler.stop();
+  vpnManager?.disconnect().catch(() => {}); // tear down any managed VPN tunnel
   io.close();
   server.close(() => {
     try { db.close(); } catch { /* noop */ }
