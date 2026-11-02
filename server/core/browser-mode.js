@@ -169,6 +169,19 @@ async function simulateClick(page, selector) {
   }
 }
 
+// Hard bounds for total on-page dwell: sites flag visits shorter than ~20s
+// (bot-like) or longer than ~90s (afk-like). Persona scales can push the raw
+// dwell anywhere, so the FINAL dwell is always clamped into this window.
+const DWELL_MIN_S = parseInt(process.env.BEHAVIOR_DWELL_MIN_S || '20', 10);
+const DWELL_MAX_S = parseInt(process.env.BEHAVIOR_DWELL_MAX_S || '90', 10);
+
+/** Clamp a dwell time (ms) into the human window [minS, maxS] seconds. */
+export function clampDwellMs(ms, minS = DWELL_MIN_S, maxS = DWELL_MAX_S) {
+  const lo = minS * 1000;
+  const hi = Math.max(maxS, minS) * 1000;
+  return Math.min(Math.max(ms, lo), hi);
+}
+
 async function simulateDwell(page, minMs = 2000, maxMs = 8000, plan = null) {
   const pageData = await getPageStats(page);
 
@@ -182,7 +195,10 @@ async function simulateDwell(page, minMs = 2000, maxMs = 8000, plan = null) {
   // 'quick_bouncer' leaves fast; a 'content_reader' lingers).
   const dwellScale = clampNum(plan?.dwellScale, 0.3, 3.0, 1.0);
   const baseDwell = (minMs + Math.random() * (maxMs * (1 + wordFactor * 0.5))) * dwellScale;
-  const dwell = baseDwell + (imageFactor * 500) + (linkFactor * 200);
+  const rawDwell = baseDwell + (imageFactor * 500) + (linkFactor * 200);
+
+  // Clamp the final dwell into the human window [DWELL_MIN_S, DWELL_MAX_S].
+  const dwell = clampDwellMs(rawDwell);
 
   await sleep(dwell);
 }
@@ -2004,9 +2020,30 @@ export async function runBrowserVisit({
     const puppeteerExtra = await import('puppeteer-extra');
     const StealthPlugin = stealthPluginFn;
     puppeteerExtra.use(StealthPlugin());
-    var browser = await puppeteerExtra.launch(launchOptions);
+    var browser;
+  try {
+    browser = await puppeteerExtra.launch(launchOptions);
+  } catch (launchErr) {
+    // headless:false needs a display server (X/Wayland). On headless boxes the
+    // launch throws — retry headless instead of failing every browser visit.
+    if (launchOptions.headless === false) {
+      logger.warn(`Headed launch failed (${launchErr.message}) — retrying headless`);
+      browser = await puppeteerExtra.launch({ ...launchOptions, headless: 'new' });
+    } else {
+      throw launchErr;
+    }
+  }
   } else {
-    var browser = await puppeteer.launch(launchOptions);
+    try {
+      browser = await puppeteer.launch(launchOptions);
+    } catch (launchErr) {
+      if (launchOptions.headless === false) {
+        logger.warn(`Headed launch failed (${launchErr.message}) — retrying headless`);
+        browser = await puppeteer.launch({ ...launchOptions, headless: 'new' });
+      } else {
+        throw launchErr;
+      }
+    }
   }
 
   const start = Date.now();
@@ -2093,10 +2130,13 @@ export async function runBrowserVisit({
       }
     }
 
-    // Navigate
+    // Navigate. NOTE: `timeout` here is the engine's requestTimeout, which the
+    // user may set low (e.g. 3s) for HTTP mode — far too short for a real page
+    // load through a proxy. Browser navigation gets its own floor (30s min).
+    const navTimeout = Math.max(timeout || 30000, 30000);
     const response = await page.goto(url, {
       waitUntil: 'domcontentloaded',
-      timeout,
+      timeout: navTimeout,
     });
 
     // Store response cookies for session persistence
@@ -2191,14 +2231,20 @@ export async function runBrowserVisit({
     const failureReasons = [];
     if (!(statusCode > 0 && statusCode < 500)) failureReasons.push(`status ${statusCode}`);
     if (verification.errors.length) failureReasons.push(`content: ${verification.errors.join('; ')}`);
+    // Fingerprint-consistency mismatches are a DETECTION signal, not a visit
+    // failure — the page still loaded. Record them as warnings instead of
+    // failing the visit (they're fed to the detection-feedback loop separately).
+    const warnings = [];
     if (!fingerprintCheck.consistent) {
       const bad = (fingerprintCheck.checks || []).filter((c) => !c.consistent).map((c) => `${c.name}=${JSON.stringify(c.value)} expected ${JSON.stringify(c.expected)}`);
-      failureReasons.push(`fingerprint: ${bad.length ? bad.join(', ') : 'inconsistent (no details)'}`);
+      warnings.push(`fingerprint: ${bad.length ? bad.join(', ') : 'inconsistent (no details)'}`);
     }
-    if (fingerprintCheck.error) failureReasons.push(`fingerprint check error: ${fingerprintCheck.error}`);
+    if (fingerprintCheck.error) warnings.push(`fingerprint check error: ${fingerprintCheck.error}`);
 
     return {
-      success: statusCode > 0 && statusCode < 500 && !verification.errors.length && fingerprintCheck.consistent,
+      success: statusCode > 0 && statusCode < 500 && !verification.errors.length,
+      warnings,
+      fingerprintConsistent: fingerprintCheck.consistent,
       statusCode,
       latency,
       userAgent: profile.ua,

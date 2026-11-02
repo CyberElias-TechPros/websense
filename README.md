@@ -3929,6 +3929,30 @@ docker-compose up --build
 # Open http://localhost:3000
 ```
 
+### 🔌 Ports — what runs where
+| Part | Port | Notes |
+|---|---|---|
+| **Server (API + Socket.IO)** | `PORT` env, default **3001**, bound to `HOST` (0.0.0.0) | `server/` — `npm start`. In production it also serves the built dashboard from `client/dist` on the same port → http://localhost:3001 is the whole app |
+| **Client dev server (Vite)** | **3000** | `client/` — `npm run dev`. Proxies `/api` + `/socket.io` to `VITE_BACKEND_PORT` (default **3001**) → dashboard at http://localhost:3000 |
+| **Docker** | frontend **3000** (nginx) → backend **3001** | `docker-compose.yml`; backend alone on :3001 also serves the built client |
+
+The server boot log prints both URLs. If you run the server on a non-default port
+(e.g. `PORT=3005`), point the dev client at it with `VITE_BACKEND_PORT=3005`.
+
+### 🧦 Proxy protocols (per-proxy `type`)
+Every proxy carries a `type` (`http` | `https` | `socks4` | `socks5`) shown in the
+Proxies table ("Proto" column) and settable when adding a proxy manually. The
+network layer picks the agent from it: HTTP/HTTPS proxies get an HTTP CONNECT
+agent, SOCKS proxies get a SOCKS agent, and browser mode passes
+`--proxy-server=socks5://host:port` to Chrome (credentials via `page.authenticate`,
+since Chrome's flag can't carry userinfo). **Webshare (paid) endpoints are
+SOCKS5** — controlled by `WEBSHARE_PROTOCOL` (default `socks5`, per-entry
+`type` in `config/proxies.js` overrides). Credentials are attached **only** to
+proxies that have them (paid Webshare via `PROXY_USERNAME`/`PROXY_PASSWORD`);
+free proxies stay credential-less. Health checks probe each proxy with its own
+protocol+credentials and report `407` distinctly ("proxy alive, auth
+missing/rejected").
+
 ---
 
 ## 🤖 AI Behavior Director (OmniRoute / Ollama / any OpenAI-compatible AI)

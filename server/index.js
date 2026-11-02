@@ -446,6 +446,10 @@ process.on('uncaughtException', (err) => {
 // ---------------------------------------------------------------------------
 server.listen(config.server.port, config.server.host, () => {
   logger.info(`🚀 Proxy Visitor Server on http://${config.server.host}:${config.server.port}`);
+  logger.info(
+    `🌐 Ports — API + Socket.IO + dashboard (prod/static dist): http://localhost:${config.server.port} | ` +
+    `dev dashboard (vite, client/): http://localhost:3000 → proxies /api + /socket.io to VITE_BACKEND_PORT (default ${config.server.port})`
+  );
   if (config.engine.autoStart) {
     logger.info('⚡ Auto-starting visit engine (AUTO_START=1)');
     scheduler.start();

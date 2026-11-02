@@ -85,7 +85,14 @@ export class ProxyAutoRefresh {
       // Fetch new proxies from provider
       let newProxies = [];
       if (this.config.provider === 'webshare') {
-        const apiUrl = this.config.apiUrl || await this.integrations.getWebshareDownloadUrl();
+        // The paid Webshare list is static (config/proxies.js) unless a Webshare
+        // API URL/key is configured. Don't throw every cycle when it isn't —
+        // the free GitHub-source refresh (free-proxy-fetcher) handles rotation.
+        const apiUrl = this.config.apiUrl || (await this.integrations.getWebshareDownloadUrl().catch(() => null));
+        if (!apiUrl) {
+          logger.info('Webshare auto-refresh skipped — no API URL/key configured; using static paid list + free sources');
+          return { refreshed: false, reason: 'no_api_url' };
+        }
         newProxies = await this.integrations.fetchAndAdd(apiUrl);
       } else {
         newProxies = await this.integrations.fetchAndAdd(null, this.config.provider);

@@ -10,7 +10,7 @@ export default function ProxyTable() {
   const [proxies, setProxies] = useState([]);
   const [checking, setChecking] = useState(false);
   const [checkingHost, setCheckingHost] = useState(null);
-  const [adding, setAdding] = useState({ host: '', port: '', country: '', city: '' });
+  const [adding, setAdding] = useState({ host: '', port: '', country: '', city: '', type: 'http' });
   const [showAdd, setShowAdd] = useState(false);
 
   const loadProxies = useCallback(async () => {
@@ -46,7 +46,11 @@ export default function ProxyTable() {
     setCheckingHost(host);
     try {
       const res = await checkProxy(host);
-      toast.success(`${host}: ${res.data.healthy ? 'healthy' : 'unhealthy'}`);
+      if (res.data.healthy) {
+        toast.success(`${host}: healthy (${res.data.latency}ms)`);
+      } else {
+        toast.error(`${host}: ${res.data.error || 'unhealthy'}`, { duration: 6000 });
+      }
       await loadProxies();
     } catch {
       toast.error('Health check failed');
@@ -79,12 +83,13 @@ export default function ProxyTable() {
       await addProxy({
         host: adding.host,
         port: parseInt(adding.port, 10),
+        type: adding.type,
         country: adding.country || 'XX',
         city: adding.city || 'Unknown',
         flag: '🌐',
       });
       toast.success('Proxy added');
-      setAdding({ host: '', port: '', country: '', city: '' });
+      setAdding({ host: '', port: '', country: '', city: '', type: 'http' });
       setShowAdd(false);
       await loadProxies();
     } catch {
@@ -120,6 +125,13 @@ export default function ProxyTable() {
             onChange={(e) => setAdding((a) => ({ ...a, country: e.target.value }))} />
           <input className="input" placeholder="City" value={adding.city}
             onChange={(e) => setAdding((a) => ({ ...a, city: e.target.value }))} />
+          <select className="input" value={adding.type}
+            onChange={(e) => setAdding((a) => ({ ...a, type: e.target.value }))}>
+            <option value="http">http</option>
+            <option value="https">https</option>
+            <option value="socks4">socks4</option>
+            <option value="socks5">socks5</option>
+          </select>
           <div className="col-span-2 md:col-span-4 flex justify-end gap-2">
             <button onClick={() => setShowAdd(false)} className="btn-secondary py-1.5">Cancel</button>
             <button onClick={handleAdd} className="btn-primary py-1.5">Add Proxy</button>
@@ -134,6 +146,8 @@ export default function ProxyTable() {
               <th className="pb-3 text-left font-medium">Location</th>
               <th className="pb-3 text-left font-medium">Host</th>
               <th className="pb-3 text-left font-medium">Port</th>
+              <th className="pb-3 text-left font-medium">Proto</th>
+              <th className="pb-3 text-left font-medium">Source</th>
               <th className="pb-3 text-left font-medium">Status</th>
               <th className="pb-3 text-right font-medium">Success</th>
               <th className="pb-3 text-right font-medium">Failed</th>
@@ -154,6 +168,16 @@ export default function ProxyTable() {
                 </td>
                 <td className="py-3 font-mono text-xs">{proxy.host}</td>
                 <td className="py-3">{proxy.port}</td>
+                <td className="py-3">
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-mono ${proxy.type === 'socks5' || proxy.type === 'socks4' ? 'bg-purple-500/20 text-purple-300' : 'bg-sky-500/20 text-sky-300'}`}>
+                    {proxy.type || 'http'}
+                  </span>
+                </td>
+                <td className="py-3">
+                  <span className={`px-1.5 py-0.5 rounded text-xs ${proxy.source === 'webshare' ? 'bg-amber-500/20 text-amber-300' : proxy.source === 'free' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-dark-700 text-dark-300'}`}>
+                    {proxy.source || 'manual'}{proxy.archived ? ' · archived' : ''}
+                  </span>
+                </td>
                 <td className="py-3"><StatusBadge status={proxy.status} /></td>
                 <td className="py-3 text-right text-emerald-400">{proxy.successCount}</td>
                 <td className="py-3 text-right text-red-400">{proxy.failCount}</td>

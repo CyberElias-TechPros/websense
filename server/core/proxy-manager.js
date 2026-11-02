@@ -344,13 +344,30 @@ export class ProxyManager {
   async _httpProbe(proxy, target, timeoutMs) {
     const agent = this.createAgent(proxy, target.startsWith('https'));
     const start = Date.now();
-    await axios.get(target, {
+    const resp = await axios.get(target, {
       httpsAgent: agent,
       httpAgent: agent,
       timeout: timeoutMs,
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0.0.0' },
-      // Any HTTP response means the proxy tunnel works.
-      validateStatus: () => true,
+      // Any 2xx/3xx means the proxy tunnel works end-to-end.
+      validateStatus: (s) => s >= 200 && s < 400,
+    }).catch((err) => {
+      // Classify proxy-level auth failures distinctly: 407 means the proxy is
+      // ALIVE but rejected our credentials (e.g. paid Webshare proxy while
+      // PROXY_USERNAME/PROXY_PASSWORD are unset, or wrong protocol). Free
+      // proxies carry no credentials and must never be sent any.
+      const status = err.response?.status;
+      if (status === 407) {
+        const e = new Error(`407 Proxy Authentication Required — proxy alive, credentials missing/rejected (proxy type=${proxy.type || 'http'})`);
+        e.proxyStatus = 407;
+        throw e;
+      }
+      if (status) {
+        const e = new Error(`proxy returned HTTP ${status}`);
+        e.proxyStatus = status;
+        throw e;
+      }
+      throw err;
     });
     return Date.now() - start;
   }
