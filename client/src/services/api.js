@@ -56,6 +56,13 @@ export const getRecentVisits = (limit = 20) => api.get('/visits/recent', { param
 export const getProxies = () => api.get('/proxies');
 export const checkAllProxies = () => api.post('/proxies/check');
 export const checkProxy = (host) => api.post(`/proxies/${host}/check`);
+// Pre-flight screen: protocol detection + tunnel + geo + anonymity + blacklist + score
+export const screenProxy = (host, opts = {}) => api.post(`/proxies/${host}/screen`, opts);
+export const getScreen = (host) => api.get(`/proxies/${host}/screen`);
+export const screenAllProxies = (opts = {}) => api.post('/proxies/screen', opts);
+export const getBlacklist = () => api.get('/proxies/blacklist');
+export const blacklistProxy = (host, reason) => api.post(`/proxies/${host}/blacklist`, { reason });
+export const unblacklistProxy = (host) => api.delete(`/proxies/${host}/blacklist`);
 export const toggleProxy = (host, enabled) => api.patch(`/proxies/${host}/toggle`, { enabled });
 export const addProxy = (proxy) => api.post('/proxies', proxy);
 export const removeProxy = (host) => api.delete(`/proxies/${host}`);

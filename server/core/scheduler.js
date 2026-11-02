@@ -137,6 +137,11 @@ export class Scheduler {
   updateConfig(newConfig) {
     const oldConcurrency = this.config.concurrency;
     Object.assign(this.config, newConfig);
+    // The engine keeps its own config copy (constructor merge) — push the same
+    // patch into it so mode/timeout changes apply to LIVE visits immediately.
+    if (this.engine && typeof this.engine.configure === 'function') {
+      this.engine.configure(newConfig);
+    }
 
     // If concurrency changed while running, restart slots to match.
     if (this.state === 'running' && newConfig.concurrency !== undefined && newConfig.concurrency !== oldConcurrency) {

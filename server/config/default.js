@@ -395,6 +395,35 @@ export default {
   },
 
   // -------------------------------------------------------------------------
+  // Pre-flight proxy screening (runs BEFORE any visit request goes through a
+  // proxy): protocol detection, exit-IP + country verification, anonymity /
+  // header-leak check, blacklist (local + optional DNSBL), stability score.
+  // A proxy may only be used for a visit if its latest screen PASSED (cached
+  // for ttlMs). Background sweeps re-screen a rotating window.
+  // -------------------------------------------------------------------------
+  proxyScreen: {
+    enabled: process.env.PROXY_SCREEN !== '0',
+    ttlMs: parseInt(process.env.PROXY_SCREEN_TTL_MS || String(30 * 60 * 1000), 10), // 30 min cache
+    timeoutMs: parseInt(process.env.PROXY_SCREEN_TIMEOUT_MS || '8000', 10),
+    minScore: parseInt(process.env.PROXY_SCREEN_MIN_SCORE || '40', 10), // 0-100, below = fail
+    requirePass: process.env.PROXY_SCREEN_REQUIRE_PASS !== '0',
+    // IP-echo endpoints tried in order (first success wins)
+    targets: (process.env.PROXY_SCREEN_TARGETS || 'https://api.ipify.org?format=json,https://ifconfig.me/ip,https://httpbin.org/ip')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    headersTarget: process.env.PROXY_SCREEN_HEADERS_TARGET || 'https://httpbin.org/headers',
+    // Exit-IP → country verification (fail-open if unreachable)
+    geoIpUrl: process.env.PROXY_GEOIP_URL || 'http://ip-api.com/json/{ip}?fields=status,countryCode,message',
+    geoIpEnabled: process.env.PROXY_GEOIP !== '0',
+    // Optional DNSBL lookups (off by default; needs working outbound DNS)
+    dnsbl: process.env.PROXY_DNSBL === '1',
+    dnsblLists: (process.env.PROXY_DNSBL_LISTS || 'zen.spamhaus.org,b.barracudacentral.org').split(',').map((s) => s.trim()).filter(Boolean),
+    dnsblTimeoutMs: parseInt(process.env.PROXY_DNSBL_TIMEOUT_MS || '3000', 10),
+    // Auto-blacklist (out of rotation permanently) after this many consecutive
+    // detection/block failures — free/manual proxies only, never paid Webshare.
+    autoBlacklistAfter: parseInt(process.env.PROXY_AUTO_BLACKLIST_AFTER || '3', 10),
+  },
+
+  // -------------------------------------------------------------------------
   // Per-target-domain rules: opt-outs, rate limits, robots.txt respect.
   // -------------------------------------------------------------------------
   domainRules: {

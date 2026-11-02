@@ -4,12 +4,15 @@ import { toast } from 'sonner';
 import StatusBadge from './StatusBadge';
 import {
   getProxies, checkAllProxies, checkProxy, toggleProxy, addProxy, removeProxy,
+  screenProxy, screenAllProxies, blacklistProxy,
 } from '../services/api';
 
 export default function ProxyTable() {
   const [proxies, setProxies] = useState([]);
   const [checking, setChecking] = useState(false);
   const [checkingHost, setCheckingHost] = useState(null);
+  const [screening, setScreening] = useState(false);
+  const [screeningHost, setScreeningHost] = useState(null);
   const [adding, setAdding] = useState({ host: '', port: '', country: '', city: '', type: 'http' });
   const [showAdd, setShowAdd] = useState(false);
 
@@ -39,6 +42,47 @@ export default function ProxyTable() {
       toast.error('Health check failed');
     } finally {
       setChecking(false);
+    }
+  };
+
+  const handleScreenOne = async (host) => {
+    setScreeningHost(host);
+    try {
+      const res = await screenProxy(host);
+      const r = res.data;
+      if (r.pass) {
+        toast.success(`${host}: PASS ${r.score}/100 · ${r.protocol || '?'} · exit ${r.exitIp || '?'} (${r.exitCountry || '?'}) · ${r.anonymity}`, { duration: 6000 });
+      } else {
+        toast.error(`${host}: FAIL ${r.score}/100 — ${r.reasons?.join('; ') || 'unknown'}`, { duration: 8000 });
+      }
+      await loadProxies();
+    } catch {
+      toast.error('Screen failed');
+    } finally {
+      setScreeningHost(null);
+    }
+  };
+
+  const handleScreenAll = async () => {
+    setScreening(true);
+    try {
+      const res = await screenAllProxies({ limit: 500 });
+      toast.success(`Pre-flight screen: ${res.data.passed}/${res.data.total} passed`);
+      await loadProxies();
+    } catch {
+      toast.error('Screen all failed');
+    } finally {
+      setScreening(false);
+    }
+  };
+
+  const handleBlacklist = async (host) => {
+    try {
+      await blacklistProxy(host, 'manual via UI');
+      toast.success(`Blacklisted ${host}`);
+      await loadProxies();
+    } catch {
+      toast.error('Failed to blacklist');
     }
   };
 
@@ -112,6 +156,10 @@ export default function ProxyTable() {
             <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
             {checking ? 'Checking...' : 'Check All'}
           </button>
+          <button onClick={handleScreenAll} disabled={screening} className="btn-secondary text-sm py-1.5" title="Pre-flight screen all: protocol, tunnel, geo, anonymity, blacklist, stability">
+            <Shield className={`w-4 h-4 ${screening ? 'animate-pulse' : ''}`} />
+            {screening ? 'Screening...' : 'Screen All'}
+          </button>
         </div>
       </div>
 
@@ -148,6 +196,7 @@ export default function ProxyTable() {
               <th className="pb-3 text-left font-medium">Port</th>
               <th className="pb-3 text-left font-medium">Proto</th>
               <th className="pb-3 text-left font-medium">Source</th>
+              <th className="pb-3 text-left font-medium">Pre-flight</th>
               <th className="pb-3 text-left font-medium">Status</th>
               <th className="pb-3 text-right font-medium">Success</th>
               <th className="pb-3 text-right font-medium">Failed</th>
@@ -178,6 +227,17 @@ export default function ProxyTable() {
                     {proxy.source || 'manual'}{proxy.archived ? ' · archived' : ''}
                   </span>
                 </td>
+                <td className="py-3">
+                  {proxy.blacklisted ? (
+                    <span className="px-1.5 py-0.5 rounded text-xs bg-red-500/20 text-red-300">🚫 blacklisted</span>
+                  ) : proxy.screen ? (
+                    <span className={`px-1.5 py-0.5 rounded text-xs ${proxy.screen.pass ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`} title={`score ${proxy.screen.score}/100 · protocol ${proxy.screen.protocol || '?'} · ${proxy.screen.checkedAt || ''}`}>
+                      {proxy.screen.pass ? `✅ ${proxy.screen.score}` : `❌ ${proxy.screen.score}`}
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded text-xs bg-dark-700 text-dark-400">not screened</span>
+                  )}
+                </td>
                 <td className="py-3"><StatusBadge status={proxy.status} /></td>
                 <td className="py-3 text-right text-emerald-400">{proxy.successCount}</td>
                 <td className="py-3 text-right text-red-400">{proxy.failCount}</td>
@@ -193,6 +253,23 @@ export default function ProxyTable() {
                     >
                       <RefreshCw className={`w-4 h-4 ${checkingHost === proxy.host ? 'animate-spin' : ''}`} />
                     </button>
+                    <button
+                      onClick={() => handleScreenOne(proxy.host)}
+                      disabled={screeningHost === proxy.host}
+                      className="p-1.5 hover:bg-dark-700 rounded"
+                      title="Pre-flight screen: protocol, tunnel, geo, anonymity, blacklist, stability"
+                    >
+                      <Shield className={`w-4 h-4 ${screeningHost === proxy.host ? 'animate-pulse text-purple-300' : 'text-purple-400'}`} />
+                    </button>
+                    {!proxy.blacklisted && (
+                      <button
+                        onClick={() => handleBlacklist(proxy.host)}
+                        className="p-1.5 hover:bg-dark-700 rounded text-red-400"
+                        title="Blacklist (never use again)"
+                      >
+                        🚫
+                      </button>
+                    )}
                     <button
                       onClick={() => handleToggle(proxy.host, proxy.enabled)}
                       className="p-1.5 hover:bg-dark-700 rounded"

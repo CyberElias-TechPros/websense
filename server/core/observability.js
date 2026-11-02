@@ -66,6 +66,14 @@ export class ObservabilityHub {
     this.checkAlerts();
   }
 
+  /** Pre-flight proxy screen outcome (pass/fail) — feeds metrics + alerts. */
+  recordProxyScreen(proxy, screen) {
+    this.counters.proxy_screens_total = (this.counters.proxy_screens_total || 0) + 1;
+    if (screen?.pass) this.counters.proxy_screens_passed = (this.counters.proxy_screens_passed || 0) + 1;
+    else this.counters.proxy_screens_failed = (this.counters.proxy_screens_failed || 0) + 1;
+    if (proxy?.blacklisted) this.counters.proxy_blacklisted_total = (this.counters.proxy_blacklisted_total || 0) + 1;
+  }
+
   recordFreeRefresh(report) {
     this.counters.free_refreshes++;
     this.counters.free_proxies_added_total += report?.added || 0;

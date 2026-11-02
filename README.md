@@ -3939,6 +3939,25 @@ docker-compose up --build
 The server boot log prints both URLs. If you run the server on a non-default port
 (e.g. `PORT=3005`), point the dev client at it with `VITE_BACKEND_PORT=3005`.
 
+### 🧪 Pre-flight proxy screening — every proxy is tested before use
+No visit request is ever sent through an untested proxy. Before use, each proxy is
+**screened** (`core/proxy-screener.js`) and only a fresh PASS is used:
+
+1. **Protocol detected for real** — SOCKS5 greeting (incl. user/pass auth) → HTTP CONNECT → SOCKS4; the detected protocol is stored per proxy (`type` column, self-heals mislabeled list entries) and drives the agent / Chrome `--proxy-server` scheme
+2. **Tunnel probe** through that protocol to IP-echo endpoints → exit IP + latency; `407` = "alive but auth rejected" (reported distinctly)
+3. **Anonymity** — header echo: `X-Forwarded-For`/`X-Real-IP` leak → *transparent* (hard fail); `Via` → anonymous; neither → elite
+4. **Country verification** — exit IP geolocated vs declared country; mismatch = hard fail
+5. **Blacklist** — persisted local list + optional DNSBL (`PROXY_DNSBL=1`); repeated detection/block failures auto-blacklist free/manual proxies (paid Webshare never)
+6. **Stability score** — success rate, avg latency, consecutive failures, circuit breaker → 0–100 score vs `PROXY_SCREEN_MIN_SCORE` (default 40)
+
+Selection prefers verified proxies; the visit engine re-screens on demand and, if no
+proxy passes, **skips the visit** (`skip_reason='no_verified_proxy'`) instead of sending
+the request. Background sweeps re-screen a rotating window every minute. Screens are
+persisted (`proxy_screens` table) and visible in the Proxies page (Pre-flight column,
+per-row 🛡 Screen, Screen All, 🚫 blacklist).
+
+API: `POST /api/proxies/:host/screen` · `GET /api/proxies/:host/screen` · `POST /api/proxies/screen` · `GET|POST|DELETE /api/proxies/.../blacklist`
+
 ### 🧦 Proxy protocols (per-proxy `type`)
 Every proxy carries a `type` (`http` | `https` | `socks4` | `socks5`) shown in the
 Proxies table ("Proto" column) and settable when adding a proxy manually. The
@@ -3952,6 +3971,27 @@ proxies that have them (paid Webshare via `PROXY_USERNAME`/`PROXY_PASSWORD`);
 free proxies stay credential-less. Health checks probe each proxy with its own
 protocol+credentials and report `407` distinctly ("proxy alive, auth
 missing/rejected").
+
+### 🧭 Browser mode (Puppeteer) — setup & status
+Selecting **Browser (Puppeteer)** or **Mixed** in Settings → Visit Mode switches
+the running engine live (no restart needed). Requirements on the machine that
+runs the server:
+
+- `npm install` in `server/` installs `puppeteer` (optional dependency) and its
+  postinstall downloads a bundled Chrome into `~/.cache/puppeteer`.
+- If the Chrome download is blocked, either run `npx puppeteer browsers install chrome`,
+  or point at a system Chrome: `PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome`
+  (or `CHROME_PATH=...`) in `server/.env`.
+- Browser visits always navigate with a ≥30 s timeout floor (the HTTP
+  `requestTimeout` never starves page loads), launch headless by default
+  (`headless: false` in engine config shows a real window, with automatic
+  headless fallback on headless boxes), and pass the proxy's own scheme to
+  Chrome (`--proxy-server=http|socks5://host:port`).
+- `/api/engine/status` returns `browserMode: { available, reason }`; the
+  Settings page shows a green ✓ or an amber ⚠ next to the Visit Mode dropdown,
+  and the server logs a warning at boot if browser mode is selected but
+  unavailable. Missing puppeteer/Chrome never crashes the app — browser visits
+  just fail with a clear error.
 
 ---
 

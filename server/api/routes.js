@@ -15,7 +15,7 @@ import { validateProxyInput, validateUrlInput, validateEngineConfigPatch, ENGINE
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null, domainRules = null, observability = null) {
+export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null, domainRules = null, observability = null, proxyScreener = null) {
   const router = Router();
 
   // -----------------------------------------------------------------------
@@ -377,6 +377,69 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
     if (!proxy) return res.status(404).json({ error: 'Proxy not found' });
     const result = await proxyManager.healthCheck(proxy);
     res.json(result);
+  });
+
+  // ── Pre-flight screening (protocol / tunnel / geo / anonymity / blacklist) ─
+  // Full screen of ONE proxy — the same gate every visit passes before use.
+  router.post('/proxies/:host/screen', async (req, res) => {
+    if (!proxyScreener) return res.status(503).json({ error: 'Screening disabled (PROXY_SCREEN=0)' });
+    const proxy = proxyManager.proxies.find((p) => p.host === req.params.host);
+    if (!proxy) return res.status(404).json({ error: 'Proxy not found' });
+    try {
+      const report = await proxyScreener.screen(proxy, req.body || {});
+      observability?.recordProxyScreen?.(proxy, report);
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Last persisted screen report for a proxy.
+  router.get('/proxies/:host/screen', (req, res) => {
+    if (!proxyScreener) return res.status(503).json({ error: 'Screening disabled (PROXY_SCREEN=0)' });
+    const report = proxyScreener.getLastScreen(req.params.host);
+    if (!report) return res.status(404).json({ error: 'Never screened' });
+    res.json(report);
+  });
+
+  // Screen ALL active proxies (capped) — bounded concurrency.
+  router.post('/proxies/screen', async (req, res) => {
+    if (!proxyScreener) return res.status(503).json({ error: 'Screening disabled (PROXY_SCREEN=0)' });
+    const limit = Math.min(parseInt(req.body?.limit || '500', 10), 2000);
+    const concurrency = Math.min(parseInt(req.body?.concurrency || '25', 10), 100);
+    const targets = proxyManager.getActiveProxies().filter((p) => !p.blacklisted && !p.archived).slice(0, limit);
+    const results = [];
+    let idx = 0;
+    const worker = async () => {
+      while (idx < targets.length) {
+        const p = targets[idx++];
+        try {
+          const report = await proxyScreener.screen(p, req.body || {});
+          observability?.recordProxyScreen?.(p, report);
+          results.push({ host: p.host, port: p.port, pass: report.pass, score: report.score, protocol: report.protocol, reasons: report.reasons });
+        } catch (err) {
+          results.push({ host: p.host, port: p.port, pass: false, error: err.message });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, worker));
+    const passed = results.filter((r) => r.pass).length;
+    res.json({ total: results.length, passed, failed: results.length - passed, results });
+  });
+
+  // ── Blacklist management ──
+  router.get('/proxies/blacklist', (req, res) => {
+    res.json({ blacklist: proxyManager.listBlacklist() });
+  });
+  router.post('/proxies/:host/blacklist', (req, res) => {
+    const proxy = proxyManager.proxies.find((p) => p.host === req.params.host);
+    if (!proxy) return res.status(404).json({ error: 'Proxy not found' });
+    proxyManager.blacklistProxy(req.params.host, req.body?.reason || 'manual');
+    res.json({ success: true, blacklisted: req.params.host });
+  });
+  router.delete('/proxies/:host/blacklist', (req, res) => {
+    proxyManager.unblacklistProxy(req.params.host);
+    res.json({ success: true, unblacklisted: req.params.host });
   });
 
   router.patch('/proxies/:host/toggle', (req, res) => {
