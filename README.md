@@ -3972,6 +3972,27 @@ free proxies stay credential-less. Health checks probe each proxy with its own
 protocol+credentials and report `407` distinctly ("proxy alive, auth
 missing/rejected").
 
+### 🧭 Browser mode (Puppeteer) — setup & status
+Selecting **Browser (Puppeteer)** or **Mixed** in Settings → Visit Mode switches
+the running engine live (no restart needed). Requirements on the machine that
+runs the server:
+
+- `npm install` in `server/` installs `puppeteer` (optional dependency) and its
+  postinstall downloads a bundled Chrome into `~/.cache/puppeteer`.
+- If the Chrome download is blocked, either run `npx puppeteer browsers install chrome`,
+  or point at a system Chrome: `PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome`
+  (or `CHROME_PATH=...`) in `server/.env`.
+- Browser visits always navigate with a ≥30 s timeout floor (the HTTP
+  `requestTimeout` never starves page loads), launch headless by default
+  (`headless: false` in engine config shows a real window, with automatic
+  headless fallback on headless boxes), and pass the proxy's own scheme to
+  Chrome (`--proxy-server=http|socks5://host:port`).
+- `/api/engine/status` returns `browserMode: { available, reason }`; the
+  Settings page shows a green ✓ or an amber ⚠ next to the Visit Mode dropdown,
+  and the server logs a warning at boot if browser mode is selected but
+  unavailable. Missing puppeteer/Chrome never crashes the app — browser visits
+  just fail with a clear error.
+
 ---
 
 ## 🤖 AI Behavior Director (OmniRoute / Ollama / any OpenAI-compatible AI)

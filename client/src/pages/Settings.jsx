@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
-import { getConfig, updateConfig, cleanupDb } from '../services/api';
+import { getConfig, updateConfig, cleanupDb, getEngineStatus } from '../services/api';
 
 const PRESETS = {
   stealth: { minInterval: 30000, maxInterval: 120000, concurrency: 1 },
@@ -17,6 +17,7 @@ export default function Settings() {
   });
   const [saved, setSaved] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
+  const [browserAvail, setBrowserAvail] = useState(null); // { available, reason } from engine status
 
   useEffect(() => {
     const load = async () => {
@@ -26,6 +27,10 @@ export default function Settings() {
       } catch {
         toast.error('Failed to load config');
       }
+      try {
+        const st = await getEngineStatus();
+        setBrowserAvail(st.data?.browserMode || null);
+      } catch { /* status optional */ }
     };
     load();
   }, []);
@@ -150,6 +155,16 @@ export default function Settings() {
             <option value="browser">Browser (Puppeteer)</option>
             <option value="mixed">Mixed (HTTP + browser)</option>
           </select>
+          {['browser', 'mixed'].includes(config.mode) && browserAvail && !browserAvail.available && (
+            <p className="text-xs text-amber-400 mt-2 max-w-xs">
+              ⚠ Browser mode is unavailable on this machine: {browserAvail.reason}. Browser visits will fail until fixed.
+            </p>
+          )}
+          {['browser', 'mixed'].includes(config.mode) && browserAvail?.available && (
+            <p className="text-xs text-green-400 mt-2 max-w-xs">
+              ✓ Browser mode ready ({browserAvail.reason})
+            </p>
+          )}
         </div>
 
         <button onClick={handleSave} className="btn-primary">

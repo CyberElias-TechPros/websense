@@ -36,6 +36,7 @@ import { ProxyPoolManager } from './core/proxy-pool-manager.js';
 import { PeriodicHealthChecker } from './core/periodic-health-checker.js';
 import UrlManager from './core/url-manager.js';
 import VisitEngine from './core/visit-engine.js';
+import { isBrowserModeAvailable } from './core/browser-mode.js';
 import Scheduler from './core/scheduler.js';
 import SessionManager from './core/session-manager.js';
 import ProfileManager from './core/profile-manager.js';
@@ -240,7 +241,11 @@ notificationManager.setWebhookManager(webhookManager);
 const reportingEngine = new ReportingEngine(config.reporting);
 const contentVerifier = new ContentVerifier(config.contentVerification);
 const proxyIntelligence = new ProxyIntelligence(proxyManager, config.proxyIntelligence);
-const scheduler = new Scheduler(visitEngine, { ...config.engine, sessionManager }, io);
+// IMPORTANT: the scheduler must share the ENGINE's config object (not a copy),
+// so PATCH /api/config (mode, intervals, timeouts…) applies to live visits
+// immediately — otherwise selecting "browser" mode in the UI did nothing.
+visitEngine.config.sessionManager = sessionManager;
+const scheduler = new Scheduler(visitEngine, visitEngine.config, io);
 
 // Sprint 3 completion managers.
 const abTesting = new AbTestingManager(config.abTesting);
@@ -457,6 +462,13 @@ server.listen(config.server.port, config.server.host, () => {
     `🌐 Ports — API + Socket.IO + dashboard (prod/static dist): http://localhost:${config.server.port} | ` +
     `dev dashboard (vite, client/): http://localhost:3000 → proxies /api + /socket.io to VITE_BACKEND_PORT (default ${config.server.port})`
   );
+  const browserAvail = isBrowserModeAvailable();
+  if (config.engine.mode !== 'http') {
+    if (browserAvail.available) logger.info(`🧭 Browser mode available (${browserAvail.reason})`);
+    else logger.warn(`🧭 Browser mode UNAVAILABLE — ${browserAvail.reason}. Browser/mixed visits will fail. Fix with \`npm i puppeteer\` in server/ or set PUPPETEER_EXECUTABLE_PATH/CHROME_PATH.`);
+  } else if (!browserAvail.available) {
+    logger.info(`🧭 Browser mode not installed (${browserAvail.reason}) — fine for HTTP mode; install for browser mode.`);
+  }
   if (config.engine.autoStart) {
     logger.info('⚡ Auto-starting visit engine (AUTO_START=1)');
     scheduler.start();

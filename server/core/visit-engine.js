@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../database/db.js';
 import logger from '../utils/logger.js';
 import { getRandomFingerprint, getRandomReferrer, generateRefererChain, getImmediateReferer, getClientHintsHeaders, getAcceptEncoding } from './user-agents.js';
-import { runBrowserVisit } from './browser-mode.js';
+import { runBrowserVisit, isBrowserModeAvailable } from './browser-mode.js';
 
 let tlsClientModule = null;
 let tlsLoadError = null;
@@ -809,6 +809,7 @@ export class VisitEngine {
       visitsPerHour: rate,
       uptime,
       mode: this.config.mode,
+      browserMode: isBrowserModeAvailable(), // { available, reason } — is puppeteer+Chrome usable here?
       demoMode: this.config.demoMode,
       sessionMode: this.config.sessionMode,
       sessionCount: this.sessionCount || 0,

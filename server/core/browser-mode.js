@@ -1989,8 +1989,13 @@ export async function runBrowserVisit({
   const visitId = crypto.randomUUID(); // used by the screenshot system
 
   // Launch options — NO --disable-web-security (detectable + insecure)
+  // PUPPETEER_EXECUTABLE_PATH / CHROME_PATH let you point at a system Chrome
+  // (useful when the bundled download was blocked, e.g. npm PUPPETEER_SKIP_DOWNLOAD).
+  const executablePath =
+    process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || undefined;
   const launchOptions = {
     headless: headless === false ? false : 'new',
+    ...(executablePath ? { executablePath } : {}),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -2283,9 +2288,22 @@ export async function runBrowserVisit({
   }
 }
 
-export async function isBrowserModeAvailable() {
-  const puppeteer = await loadPuppeteer();
-  return !!puppeteer;
+/**
+ * Synchronous check: is the puppeteer package resolvable (and is a Chrome
+ * binary configured or downloaded)? Used by /api/engine/status so the UI can
+ * show whether browser mode is actually usable on this machine.
+ * Returns { available, reason }.
+ */
+export function isBrowserModeAvailable() {
+  try {
+    import.meta.resolve('puppeteer');
+  } catch {
+    return { available: false, reason: 'puppeteer package not installed — run `npm i puppeteer` in server/ (or set PUPPETEER_EXECUTABLE_PATH to a system Chrome and install puppeteer-core)' };
+  }
+  if (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH) {
+    return { available: true, reason: `using ${process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH}` };
+  }
+  return { available: true, reason: 'puppeteer installed (bundled Chrome)' };
 }
 
 export { getStealthScript, detectCaptcha };
