@@ -9,7 +9,10 @@ export default {
     port: parseInt(process.env.PORT || '3001', 10),
     host: process.env.HOST || '0.0.0.0',
     // Comma-separated allowed origins for CORS (dashboard origin, dev server, etc.)
-    corsOrigins: (process.env.CORS_ORIGINS || '*')
+    // Default is localhost only — the prod dashboard is served same-origin from
+    // this server, so no wildcard is needed. Set CORS_ORIGINS=* only if you
+    // expose the API to other origins (pair it with API_TOKEN).
+    corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),

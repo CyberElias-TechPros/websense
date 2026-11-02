@@ -151,14 +151,20 @@ describe('runBrowserVisit (mocked puppeteer)', () => {
 });
 
 describe('isBrowserModeAvailable', () => {
-  it('returns { available, reason }', () => {
+  it('returns { available, reason } matching whether puppeteer actually resolves', () => {
     const r = isBrowserModeAvailable();
     expect(typeof r.available).toBe('boolean');
     expect(typeof r.reason).toBe('string');
-    // puppeteer is installed in this repo's server node_modules (optional dep),
-    // and PUPPETEER_EXECUTABLE_PATH is set above -> available with that reason.
-    expect(r.available).toBe(true);
-    expect(r.reason).toContain('/tmp/fake-chrome-for-test');
+    // Deterministic expectation: mirror the same resolution check the impl uses.
+    let resolvable = true;
+    try { import.meta.resolve('puppeteer'); } catch { resolvable = false; }
+    expect(r.available).toBe(resolvable);
+    if (resolvable) {
+      // PUPPETEER_EXECUTABLE_PATH is set at the top of this file -> reason names it
+      expect(r.reason).toContain('/tmp/fake-chrome-for-test');
+    } else {
+      expect(r.reason).toContain('npm i puppeteer');
+    }
   });
 });
 
