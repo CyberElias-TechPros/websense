@@ -5,6 +5,15 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Chrome/Chromium system libraries — required for browser mode (Puppeteer).
+# We install the distro Chromium and skip puppeteer's bundled-Chrome download.
+RUN apk add --no-cache \
+      chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont \
+    && rm -rf /var/cache/apk/*
+
+ENV PUPPETEER_SKIP_DOWNLOAD=1 \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Install deps first for layer caching
 COPY package*.json ./
 RUN npm ci --omit=dev || npm install --omit=dev

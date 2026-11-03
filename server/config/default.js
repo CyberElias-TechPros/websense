@@ -9,7 +9,10 @@ export default {
     port: parseInt(process.env.PORT || '3001', 10),
     host: process.env.HOST || '0.0.0.0',
     // Comma-separated allowed origins for CORS (dashboard origin, dev server, etc.)
-    corsOrigins: (process.env.CORS_ORIGINS || '*')
+    // Default is localhost only — the prod dashboard is served same-origin from
+    // this server, so no wildcard is needed. Set CORS_ORIGINS=* only if you
+    // expose the API to other origins (pair it with API_TOKEN).
+    corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -46,6 +49,29 @@ export default {
     screenshotOnVisit: process.env.SCREENSHOT === '1',
     // Match proxy country to the visitor fingerprint's locale country (default on)
     geoMatchProxies: process.env.GEO_MATCH_PROXIES !== '0',
+  },
+
+  // -------------------------------------------------------------------------
+  // VPN tunnel (OS-level) — visits can ride the tunnel and are BLOCKED while
+  // it is down (leak protection), so traffic never falls back to your real IP.
+  // type: external (your own VPN app — we just verify exit IP) |
+  //       openvpn  (we spawn `openvpn --config <file>`) |
+  //       wireguard (`sudo -n wg-quick up/down <iface>`)
+  // -------------------------------------------------------------------------
+  vpn: {
+    enabled: process.env.VPN_ENABLED === '1',
+    type: (process.env.VPN_TYPE || 'external').toLowerCase(), // external | openvpn | wireguard
+    configPath: process.env.VPN_CONFIG_PATH || '',   // .ovpn file or .conf
+    interface: process.env.VPN_INTERFACE || '',       // wg interface name
+    authUser: process.env.VPN_AUTH_USER || '',
+    authPass: process.env.VPN_AUTH_PASS || '',
+    verifyUrl: process.env.VPN_VERIFY_URL || 'https://api.ipify.org?format=json',
+    verifyTimeoutMs: parseInt(process.env.VPN_VERIFY_TIMEOUT_MS || '8000', 10),
+    verifyIntervalMs: parseInt(process.env.VPN_VERIFY_INTERVAL_MS || '30000', 10),
+    expectedExitIp: process.env.VPN_EXPECTED_EXIT_IP || '',
+    leakProtection: process.env.VPN_LEAK_PROTECTION !== '0',
+    requiredForVisits: process.env.VPN_REQUIRED_FOR_VISITS !== '0',
+    allowDirectVisits: process.env.VPN_ALLOW_DIRECT_VISITS === '1',
   },
 
   // -------------------------------------------------------------------------

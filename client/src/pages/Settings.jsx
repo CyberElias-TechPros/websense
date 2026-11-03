@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Trash2, RotateCcw } from 'lucide-react';
+import { Save, Trash2, RotateCcw, ShieldCheck, ShieldOff, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { getConfig, updateConfig, cleanupDb, getEngineStatus } from '../services/api';
+import { getConfig, updateConfig, cleanupDb, getEngineStatus, getVpnStatus, getVpnConfig, updateVpnConfig, connectVpn, disconnectVpn, verifyVpn } from '../services/api';
 
 const PRESETS = {
   stealth: { minInterval: 30000, maxInterval: 120000, concurrency: 1 },
@@ -18,6 +18,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
   const [browserAvail, setBrowserAvail] = useState(null); // { available, reason } from engine status
+  const [vpn, setVpn] = useState(null);       // status from /vpn/status
+  const [vpnCfg, setVpnCfg] = useState(null); // config from /vpn/config
 
   useEffect(() => {
     const load = async () => {
@@ -31,9 +33,39 @@ export default function Settings() {
         const st = await getEngineStatus();
         setBrowserAvail(st.data?.browserMode || null);
       } catch { /* status optional */ }
+      try {
+        const vs = await getVpnStatus();
+        if (vs.data?.enabled) {
+          setVpn(vs.data);
+          const vc = await getVpnConfig();
+          setVpnCfg(vc.data);
+        }
+      } catch { /* vpn optional */ }
     };
     load();
   }, []);
+
+  const vpnAction = async (fn, okMsg, errMsg) => {
+    try {
+      const r = await fn();
+      if (r.data?.status) setVpn((v) => ({ ...(v || {}), ...r.data.status }));
+      else if (r.data?.ok !== undefined && !r.data.ok) { toast.error(r.data.error || errMsg); return; }
+      else setVpn(await getVpnStatus().then((x) => x.data).catch(() => vpn));
+      toast.success(okMsg);
+    } catch (e) {
+      toast.error(e.response?.data?.error || errMsg);
+    }
+  };
+
+  const handleVpnToggle = async (enabled) => {
+    try {
+      await updateVpnConfig({ enabled });
+      setVpnCfg((c) => ({ ...(c || {}), enabled }));
+      toast.success(enabled ? 'VPN enabled — connect it below' : 'VPN disabled');
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Failed to update VPN config');
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -172,6 +204,70 @@ export default function Settings() {
           {saved ? '✓ Saved!' : 'Save Configuration'}
         </button>
       </div>
+
+      {vpnCfg && (
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            {vpn?.state === 'connected' ? <ShieldCheck className="w-5 h-5 text-green-400" /> : <ShieldOff className="w-5 h-5 text-amber-400" />}
+            VPN Tunnel
+          </h3>
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-2 text-sm text-dark-300">
+              <input
+                type="checkbox"
+                checked={!!vpnCfg.enabled}
+                onChange={(e) => handleVpnToggle(e.target.checked)}
+                className="accent-blue-500"
+              />
+              Enabled (visits blocked while tunnel is down — leak protection)
+            </label>
+            <select
+              value={vpnCfg.type || 'external'}
+              onChange={async (e) => { try { await updateVpnConfig({ type: e.target.value }); setVpnCfg((c) => ({ ...c, type: e.target.value })); } catch { toast.error('Invalid type'); } }}
+              className="input w-44"
+              disabled={!vpnCfg.enabled}
+            >
+              <option value="external">External (my own VPN app)</option>
+              <option value="openvpn">OpenVPN (managed)</option>
+              <option value="wireguard">WireGuard (wg-quick)</option>
+            </select>
+            {vpnCfg.type !== 'external' && (
+              <input
+                type="text"
+                placeholder={vpnCfg.type === 'openvpn' ? '/path/to/config.ovpn' : '/path/to/wg0.conf'}
+                value={vpnCfg.configPath || ''}
+                onChange={(e) => setVpnCfg((c) => ({ ...c, configPath: e.target.value }))}
+                onBlur={async (e) => { try { await updateVpnConfig({ configPath: e.target.value }); } catch { toast.error('Invalid config path'); } }}
+                className="input w-72"
+                disabled={!vpnCfg.enabled}
+              />
+            )}
+            {vpn?.state === 'connected' ? (
+              <button onClick={() => vpnAction(disconnectVpn, 'VPN disconnected', 'Disconnect failed')} className="btn-danger">
+                <WifiOff className="w-4 h-4" /> Disconnect
+              </button>
+            ) : (
+              <button onClick={() => vpnAction(connectVpn, 'VPN connected', 'Connect failed')} className="btn-primary" disabled={!vpnCfg.enabled}>
+                <Wifi className="w-4 h-4" /> Connect
+              </button>
+            )}
+            <button onClick={() => vpnAction(verifyVpn, 'Exit IP verified', 'Verify failed')} className="btn-secondary" disabled={!vpnCfg.enabled}>
+              <RotateCcw className="w-4 h-4" /> Verify exit IP
+            </button>
+          </div>
+          <div className="text-xs text-dark-400 mt-3 flex gap-4 flex-wrap">
+            <span>State: <b className={vpn?.state === 'connected' ? 'text-green-400' : 'text-amber-400'}>{vpn?.state || 'disconnected'}</b></span>
+            <span>Exit IP: <b>{vpn?.exitIp || '—'}</b>{vpn?.expectedExitIp ? ` (expected ${vpn.expectedExitIp})` : ''}</span>
+            {vpn?.lastVerify && <span>Last check: {vpn.lastVerify.ok ? '✅' : '❌'} {vpn.lastVerify.at}</span>}
+            {vpn?.stats?.lastError && <span className="text-red-400">Error: {vpn.stats.lastError}</span>}
+          </div>
+          <p className="text-dark-500 text-xs mt-2">
+            external = connect with your own VPN app (NordVPN, WireGuard GUI, corporate client…), we verify the exit IP.
+            openvpn/wireguard = the server spawns <code>openvpn --config</code> / <code>sudo -n wg-quick up</code> (needs the binary + passwordless sudo for wg-quick).
+            Env: VPN_ENABLED, VPN_TYPE, VPN_CONFIG_PATH, VPN_AUTH_USER, VPN_AUTH_PASS, VPN_VERIFY_URL, VPN_EXPECTED_EXIT_IP, VPN_ALLOW_DIRECT_VISITS.
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Database Maintenance</h3>

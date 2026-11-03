@@ -15,8 +15,19 @@ import { validateProxyInput, validateUrlInput, validateEngineConfigPatch, ENGINE
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null, domainRules = null, observability = null, proxyScreener = null) {
+export default function createRoutes(scheduler, proxyManager, urlManager, io, sessionManager = null, profileManager = null, utmManager = null, deviceManager = null, searchSimulator = null, captchaSolver = null, socialReferral = null, geoManager = null, analyticsManager = null, trafficPatterns = null, webhookManager = null, reportingEngine = null, contentVerifier = null, proxyIntelligence = null, abTesting = null, adViewability = null, screenshotSystem = null, multiProject = null, distributedWorkers = null, networkCondition = null, mlBehavior = null, detectionFeedback = null, videoMedia = null, ecommerceFunnel = null, formInteraction = null, cookieConsent = null, dnsSimulation = null, cdnEdge = null, apiAjax = null, competitorAnalysis = null, multiPlatformSync = null, pluginSystem = null, cliTool = null, desktopApp = null, proxyEvaluator = null, proxyStrategies = null, aiIntegration = null, proxyHealthMonitor = null, proxyRotationScheduler = null, smartRetry = null, geoRestrictions = null, proxyPerformanceTracker = null, proxyIntelligenceAnalyzer = null, notificationManager = null, proxyAutoRefresh = null, proxyPoolManager = null, periodicHealthChecker = null, freeProxyFetcher = null, behaviorDirector = null, domainRules = null, observability = null, proxyScreener = null, vpnManager = null) {
   const router = Router();
+
+  // Express 4 does NOT catch async handler rejections — a throw inside an
+  // `async (req,res)=>…` route would hang the request forever (only an
+  // unhandledRejection log). Wrap every async handler so errors reach the
+  // error middleware and the client gets a 500 JSON instead of a hang.
+  const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+  for (const method of ['get', 'post', 'put', 'patch', 'delete', 'use', 'all']) {
+    const orig = router[method].bind(router);
+    router[method] = (p, ...handlers) =>
+      orig(p, ...handlers.map((h) => (h && h.constructor.name === 'AsyncFunction' ? ah(h) : h)));
+  }
 
   // -----------------------------------------------------------------------
   // Engine controls
@@ -750,7 +761,7 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
   router.patch('/urls/toggle', (req, res) => {
     const { url, enabled } = req.body || {};
     if (!url) return res.status(400).json({ error: 'URL required' });
-    urlManager.toggleUrl(url, enabled);
+    urlManager.toggleUrl(url, enabled === undefined ? true : !!enabled);
     res.json({ success: true });
   });
 
@@ -782,6 +793,45 @@ export default function createRoutes(scheduler, proxyManager, urlManager, io, se
       if (scheduler.config[key] !== undefined) out[key] = scheduler.config[key];
     }
     res.json({ success: true, config: out });
+  });
+
+  // -----------------------------------------------------------------------
+  // VPN tunnel (external | openvpn | wireguard) — leak-protected: the engine
+  // skips visits with reason 'vpn_down' while a required tunnel is not up.
+  // -----------------------------------------------------------------------
+  router.get('/vpn/status', (req, res) => {
+    if (!vpnManager) return res.json({ enabled: false });
+    res.json({ enabled: true, ...vpnManager.getStatus() });
+  });
+
+  router.get('/vpn/config', (req, res) => {
+    if (!vpnManager) return res.status(404).json({ error: 'VPN manager not available' });
+    res.json(vpnManager.getConfig());
+  });
+
+  router.patch('/vpn/config', (req, res) => {
+    if (!vpnManager) return res.status(404).json({ error: 'VPN manager not available' });
+    const v = vpnManager.updateConfig(req.body || {});
+    if (!v.ok) return res.status(400).json({ error: 'Invalid VPN config', details: v.errors });
+    // Persist so it survives restarts
+    try { setSystemConfig('vpn', JSON.stringify(vpnManager.getConfig())); } catch { /* noop */ }
+    res.json({ success: true, config: v.config });
+  });
+
+  router.post('/vpn/connect', async (req, res) => {
+    if (!vpnManager) return res.status(404).json({ error: 'VPN manager not available' });
+    const out = await vpnManager.connect();
+    res.status(out.ok ? 200 : 400).json(out);
+  });
+
+  router.post('/vpn/disconnect', async (req, res) => {
+    if (!vpnManager) return res.status(404).json({ error: 'VPN manager not available' });
+    res.json(await vpnManager.disconnect());
+  });
+
+  router.post('/vpn/verify', async (req, res) => {
+    if (!vpnManager) return res.status(404).json({ error: 'VPN manager not available' });
+    res.json(await vpnManager.verify());
   });
 
   // -----------------------------------------------------------------------
