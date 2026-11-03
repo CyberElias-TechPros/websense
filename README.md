@@ -7,6 +7,14 @@ websense
 >
 > The proxy-powered random page visitor is **implemented and running** — backend (Node 22, Express, node:sqlite, Socket.IO), frontend (React 18 + Vite + Tailwind dashboard), Docker deployment, and demo mode.
 >
+> ### 🧪 NEW — Geo/Device QA testing (`/qa`, see [QA_TESTING.md](QA_TESTING.md))
+>
+> Test how **your own properties** behave across countries × device profiles:
+> URL × device × vantage-point matrix, geo-block / app-wall / redirect-loop /
+> content-divergence detection, heatmap dashboard, REST + WebSocket API.
+> Low-volume, openly identified (`X-Websense-QA` header), no stealth —
+> whitelist it in your own WAF/analytics. 34 tests green.
+>
 > 📁 **Code:** `server/` (backend) · `client/` (dashboard) · `ROADMAP.md` (ultra-granular roadmap + todo list, web + Android)
 > 🚀 **Run:** `cd server && npm install && DEMO_MODE=1 npm run dev` → http://localhost:3001
 > 🐳 **Docker:** `docker compose up --build` → http://localhost:3000

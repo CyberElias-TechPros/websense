@@ -85,6 +85,20 @@ export const cleanupDb = (days) => api.post('/db/cleanup', { days });
 export const getLogs = (params) => api.get('/logs', { params });
 
 // -------------------------------------------------------------------------
+// Geo/Device QA — own-property testing across countries × device profiles
+// -------------------------------------------------------------------------
+export const getQaCapabilities = () => api.get('/qa/capabilities');
+export const startQaRun = (body) => api.post('/qa/runs', body);
+export const getQaRuns = (limit = 30) => api.get('/qa/runs', { params: { limit } });
+export const getQaRun = (id) => api.get(`/qa/runs/${id}`);
+export const getQaMatrix = (id) => api.get(`/qa/runs/${id}/matrix`);
+export const cancelQaRun = (id) => api.post(`/qa/runs/${id}/cancel`);
+export const qaScreenshotUrl = (cellId) => {
+  const t = getApiToken();
+  return `${API_BASE}/qa/cells/${cellId}/screenshot${t ? `?token=${encodeURIComponent(t)}` : ''}`;
+};
+
+// -------------------------------------------------------------------------
 // Wizard — guided setup
 // -------------------------------------------------------------------------
 export const getWizardStatus = () => api.get('/wizard/status');

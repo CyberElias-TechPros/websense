@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Link2, History,
-  BarChart3, Settings, ScrollText, Globe, Wifi, WifiOff, Wand2, TrendingUp, Layers, Bell, HeartPulse, Brain,
+  BarChart3, Settings, ScrollText, Globe, Wifi, WifiOff, Wand2, TrendingUp, Layers, Bell, HeartPulse, Brain, MonitorSmartphone,
 } from 'lucide-react';
 
 const navItems = [
@@ -18,6 +18,7 @@ const navItems = [
   { path: '/logs', label: 'Logs', icon: ScrollText },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/health-checker', label: 'Health Checker', icon: HeartPulse },
+  { path: '/qa', label: 'Geo/Device QA', icon: MonitorSmartphone },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 

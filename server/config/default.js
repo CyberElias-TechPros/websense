@@ -468,6 +468,28 @@ export default {
     enabled: process.env.OBSERVABILITY !== '0',
   },
 
+  // -------------------------------------------------------------------------
+  // Geo/Device QA testing (sites you own). Runs a URL × device × country
+  // matrix through proxy vantage points at an open, low-volume cadence and
+  // reports geo-blocks / device-blocks / content divergence. Every request
+  // identifies itself via X-Websense-QA (whitelist it in your sites' WAF and
+  // filter it in GA4). NO stealth/evasion — whitelist beats evade.
+  // -------------------------------------------------------------------------
+  qa: {
+    enabled: process.env.QA_ENABLED !== '0',
+    mode: process.env.QA_CAPTURE_MODE || 'http', // http | browser | auto
+    concurrency: parseInt(process.env.QA_CONCURRENCY || '2', 10),
+    requestDelayMs: parseInt(process.env.QA_REQUEST_DELAY_MS || '1000', 10),
+    timeoutMs: parseInt(process.env.QA_TIMEOUT_MS || '30000', 10),
+    maxCells: parseInt(process.env.QA_MAX_CELLS || '400', 10),
+    maxResponseBytes: parseInt(process.env.QA_MAX_RESPONSE_BYTES || String(512 * 1024), 10),
+    identifyHeader: process.env.QA_IDENTIFY_HEADER !== '0',
+    screenshotDir: process.env.QA_SCREENSHOT_DIR || '',   // default: server/data/qa-screenshots
+    sweepIntervalMinutes: parseInt(process.env.QA_SWEEP_INTERVAL_MIN || '0', 10), // 0 = manual only
+    similarityThreshold: parseFloat(process.env.QA_SIMILARITY_THRESHOLD || '0.72'),
+    cleanupDays: parseInt(process.env.QA_CLEANUP_DAYS || '14', 10),
+  },
+
   database: {
     // data/visits.db inside the server dir; WAL journal for concurrent reads.
     path: process.env.DB_PATH || 'data/visits.db',

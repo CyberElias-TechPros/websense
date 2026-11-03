@@ -15,9 +15,10 @@ import Intelligence from './pages/Intelligence';
 import Settings from './pages/Settings';
 import Logs from './pages/Logs';
 import Wizard from './pages/Wizard';
+import Qa from './pages/Qa';
 
 export default function App() {
-  const { connected, engineState, stats, liveVisits } = useSocket();
+  const { connected, engineState, stats, liveVisits, socket } = useSocket();
   const location = useLocation();
 
   return (
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/proxy-pool" element={<ProxyPool />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/health-checker" element={<HealthChecker />} />
+          <Route path="/qa" element={<Qa socket={socket} />} />
           <Route path="/intelligence" element={<Intelligence />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
