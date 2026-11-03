@@ -276,6 +276,44 @@ describe('qa runner integration (local fixture, virtual vantages)', () => {
     expect(missing.status).toBe(404);
   }, 40_000);
 
+  it('exposure endpoint scores cells and exposes the blue-hat view', async () => {
+    const scope = scopeOverride(['/same', '/by-device']);
+    const app = express();
+    app.use(express.json());
+    app.use('/api/qa', createQaRouter({ runner, proxyManager: null, urlManager: null }));
+    const request = (await import('supertest')).default;
+
+    const startRes = await request(app)
+      .post('/api/qa/runs')
+      .send({ urls: scope.urls, deviceIds: ['desktop-chrome-win'], includeDirect: true });
+    const runId = startRes.body.runId;
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), 20_000);
+      runner.once('run_complete', (s) => { clearTimeout(t); resolve(s); });
+    });
+
+    const exp = await request(app).get(`/api/qa/runs/${runId}/exposure`);
+    expect(exp.status).toBe(200);
+    expect(exp.body.total).toBe(2);
+    // HTTP-mode captures: no JS execution is the dominant tell.
+    expect(exp.body.ruleCounts['no-js-execution']).toBe(2);
+    expect(Object.keys(exp.body.byId)).toHaveLength(2);
+    expect(exp.body.catalog.find((c) => c.id === 'no-js-execution')).toBeTruthy();
+
+    // Visits audit endpoint works even with an empty visits table.
+    const visits = await request(app).get('/api/qa/exposure/visits?limit=50');
+    expect(visits.status).toBe(200);
+    expect(visits.body.total).toBe(0);
+
+    // Sentinel ingest → observations roundtrip.
+    const ing = await request(app)
+      .post('/api/qa/sentinel/ingest')
+      .send({ path: '/', score: 55, signals: [{ id: 'automation-ua' }], selfProbe: true });
+    expect(ing.status).toBe(202);
+    const obs = await request(app).get('/api/qa/sentinel/observations');
+    expect(obs.body.observations[0].selfProbe).toBe(true);
+  }, 40_000);
+
   it('rejects router runs with no vantage points and oversized scopes', async () => {
     const app = express();
     app.use(express.json());

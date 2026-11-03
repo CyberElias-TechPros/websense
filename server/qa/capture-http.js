@@ -149,6 +149,9 @@ export async function captureHttp({
       geoBlocked: false,
       deviceBlocked: false,
       redirectLoop: false,
+      userAgent: deviceProfile.userAgent,
+      acceptLanguage,
+      viewportW: deviceProfile.viewport?.width ?? null,
     };
   }
 
@@ -203,6 +206,10 @@ export async function captureHttp({
     errorMessage: null,
     classification: QA_CLASS.PENDING, // finalize against baseline in runner
     ...analysis,
+    // Identity telemetry (what we SENT) — stored for exposure analysis
+    userAgent: deviceProfile.userAgent,
+    acceptLanguage,
+    viewportW: deviceProfile.viewport?.width ?? null,
   };
 }
 

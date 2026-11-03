@@ -18,7 +18,9 @@ import fs from 'node:fs';
 
 import { listDeviceProfiles, languageForCountry } from './device-profiles.js';
 import { isBrowserCaptureAvailable } from './capture-browser.js';
+import { summarizeExposure, recordFromQaCell, recordFromVisit, EXPOSURE_RULES } from './exposure.js';
 import * as store from './store.js';
+import db from '../database/db.js';
 import logger from '../utils/logger.js';
 
 export default function createQaRouter({ runner, proxyManager = null, urlManager = null }) {
@@ -149,6 +151,54 @@ export default function createQaRouter({ runner, proxyManager = null, urlManager
   });
 
   // -------------------------------------------------------------------------
+  // Detection exposure (blue-hat sensing layer)
+  // -------------------------------------------------------------------------
+
+  /** Exposure report for one QA run: which mannerisms give each cell away. */
+  router.get('/runs/:id/exposure', (req, res) => {
+    const run = store.getRun(req.params.id);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    const records = store.getRunCells(run.id).map(recordFromQaCell);
+    const { results, ...summary } = summarizeExposure(records);
+    // Fold per-record results into an id-indexed map to keep payloads slim.
+    const byId = {};
+    records.forEach((r, i) => {
+      byId[r.id] = { score: results[i].score, flags: results[i].flags.map((f) => ({ rule: f.rule, name: f.name, severity: f.severity, why: f.why, detail: f.detail })) };
+    });
+    res.json({ runId: run.id, ...summary, results: undefined, byId, catalog: exposureCatalog() });
+  });
+
+  /** Offline audit of the visit engine's recent output from the DB. */
+  router.get('/exposure/visits', (req, res) => {
+    const limit = Math.max(10, Math.min(1000, parseInt(req.query.limit || '200', 10)));
+    const rows = db
+      .prepare(`SELECT * FROM visits ORDER BY created_at DESC LIMIT ?`)
+      .all(limit);
+    const records = rows.map(recordFromVisit);
+    const { results, ...summary } = summarizeExposure(records);
+    const byId = {};
+    records.forEach((r, i) => {
+      byId[r.id] = { score: results[i].score, flags: results[i].flags.map((f) => ({ rule: f.rule, severity: f.severity })) };
+    });
+    res.json({ scope: 'visits', limit, ...summary, results: undefined, byId, catalog: exposureCatalog() });
+  });
+
+  /** Ingest endpoint for sentinel middleware observations from own sites. */
+  const sentinelLog = [];
+  router.post('/sentinel/ingest', (req, res) => {
+    const obs = req.body;
+    if (!obs || typeof obs !== 'object') return res.status(400).json({ error: 'observation object required' });
+    sentinelLog.push({ ...obs, receivedAt: new Date().toISOString() });
+    if (sentinelLog.length > 5000) sentinelLog.splice(0, sentinelLog.length - 5000);
+    res.status(202).json({ accepted: true, buffered: sentinelLog.length });
+  });
+
+  router.get('/sentinel/observations', (req, res) => {
+    const limit = Math.max(1, Math.min(500, parseInt(req.query.limit || '100', 10)));
+    res.json({ observations: sentinelLog.slice(-limit).reverse(), buffered: sentinelLog.length });
+  });
+
+  // -------------------------------------------------------------------------
   // Cell screenshot (browser mode)
   // -------------------------------------------------------------------------
   router.get('/cells/:id/screenshot', (req, res) => {
@@ -165,6 +215,11 @@ export default function createQaRouter({ runner, proxyManager = null, urlManager
   });
 
   return router;
+}
+
+/** Rule catalog for UI legend/labels. */
+function exposureCatalog() {
+  return EXPOSURE_RULES.map((r) => ({ id: r.id, name: r.name, severity: r.severity, why: r.why }));
 }
 
 // ---------------------------------------------------------------------------

@@ -185,6 +185,9 @@ export async function captureBrowser({
       screenshotPath,
       consoleErrors,
       failedRequests,
+      userAgent: deviceProfile.userAgent,
+      acceptLanguage,
+      viewportW: deviceProfile.viewport?.width ?? null,
     };
   } catch (err) {
     if (/Could not find Chrome|puppeteer.*not.*install|Cannot find package 'puppeteer'/i.test(String(err?.message || err))) {

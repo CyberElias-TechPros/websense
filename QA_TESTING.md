@@ -114,6 +114,46 @@ Browser mode needs Chrome: install `puppeteer` where its download host is reacha
 
 ---
 
+## 👁 Detection exposure — the blue-hat sensing layer
+
+Beyond *"what does each cell receive?"*, websense answers **"what would a bot-detector notice about how this request behaves?"** — the observability half of the loop. Two surfaces:
+
+### 1. `GET /api/qa/runs/:id/exposure` (dashboard: "Detection exposure" panel)
+
+Every cell of a run is scored against a documented catalog of detector heuristics:
+
+| Rule | Severity | The tell |
+|---|---|---|
+| `no-js-execution` | high | HTTP-mode fetches execute no JS — analytics tags never fire; detectors correlating hits with events see a ghost |
+| `timing-uniform` | high | Cohort inter-arrival CV < 0.25 = metronome scheduling; human browsing has CV ≳ 1 |
+| `ua-device-mismatch` | high | Mobile UA with desktop device class (or vice versa) — internally inconsistent identity |
+| `missing-fetch-metadata` | medium | Browser UA without `Sec-Fetch-*` headers isn't a real browser navigation |
+| `no-accept-language` | medium | Real browsers always send one |
+| `ua-viewport-mismatch` | medium | Mobile UA on a 1920px viewport, etc. |
+| `ua-reuse-cohort` | medium | One UA string carrying >25 % of a cohort |
+| `impossible-speed` | medium | Full "visits" completing in < 300 ms |
+| `direct-landing-no-referrer` | low | Referrer-less direct landings (weak alone; corroborates) |
+
+The report returns a 0–100 *detectability score* per cell plus aggregates (rule counts, severity totals, cohort-level flags like timing uniformity). Scores are exposed in the dashboard per run and per cell, with the *why* written out for each rule — the point is to watch behavior, not to hide it.
+
+### 2. `GET /api/qa/exposure/visits?limit=N`
+
+Runs the same analyzer **offline over the engine's own recent `visits` table** — a behavioral audit of existing traffic patterns without generating anything new.
+
+### 3. Sentinel — the defensive half to mount on your own sites
+
+`server/qa/sentinel.js` is a reference Express middleware that scores inbound requests on your properties (automation UAs, missing browser headers, burst rates, cookie-less revisits) and recognizes `X-Websense-QA` probes as self-traffic (`selfProbe: true`). Mount it on your sites, point `onObservation` at `POST /api/qa/sentinel/ingest`, and read back `/api/qa/sentinel/observations` — closing the loop: **websense generates, sentinel detects, the dashboard shows whether detection worked.**
+
+```
+websense QA run ──► your site's sentinel ──► /api/qa/sentinel/ingest
+        │                                            │
+        └──── run exposure report ◄──── observations ┘
+```
+
+Use it to calibrate: if sentinel scores real users ≥ 40, your rules misfire; if QA sweeps score ≈ 0, your rules miss.
+
+---
+
 ## Architecture
 
 ```
@@ -125,7 +165,9 @@ server/qa/
 ├── capture-browser.js   # optional plain-Puppeteer rendered capture + screenshots (no stealth)
 ├── store.js             # qa_runs / qa_cells tables, matrix pivot, retention cleanup
 ├── runner.js            # matrix orchestration: concurrency + pacing, cancel, sweep timer, WS progress
-└── qa-routes.js         # /api/qa: capabilities, runs, matrix, screenshots; vantage resolution from pool
+├── exposure.js          # blue-hat sensing: per-request detectability heuristics + cohort analysis
+├── sentinel.js          # reference defensive middleware for your own sites (detects the traffic)
+└── qa-routes.js         # /api/qa: capabilities, runs, matrix, exposure, sentinel ingest/observations
 ```
 
-Tests: `server/tests/unit/qa-modules.test.js` (28 tests) + `server/tests/integration/qa-runner.test.js` (6 tests — real matrix execution against a local fixture site with geo/device gating, plus REST surface). Run: `cd server && npm test`.
+Tests: `server/tests/unit/qa-modules.test.js` (28) + `server/tests/unit/qa-exposure.test.js` (21) + `server/tests/integration/qa-runner.test.js` (7 — real matrix execution against a local fixture site with geo/device gating, REST surface, exposure + sentinel endpoints). Run: `cd server && npm test`.

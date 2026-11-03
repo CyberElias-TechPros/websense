@@ -93,6 +93,9 @@ export const getQaRuns = (limit = 30) => api.get('/qa/runs', { params: { limit }
 export const getQaRun = (id) => api.get(`/qa/runs/${id}`);
 export const getQaMatrix = (id) => api.get(`/qa/runs/${id}/matrix`);
 export const cancelQaRun = (id) => api.post(`/qa/runs/${id}/cancel`);
+export const getQaExposure = (id) => api.get(`/qa/runs/${id}/exposure`);
+export const getQaVisitsExposure = (limit = 200) => api.get('/qa/exposure/visits', { params: { limit } });
+export const getSentinelObservations = (limit = 100) => api.get('/qa/sentinel/observations', { params: { limit } });
 export const qaScreenshotUrl = (cellId) => {
   const t = getApiToken();
   return `${API_BASE}/qa/cells/${cellId}/screenshot${t ? `?token=${encodeURIComponent(t)}` : ''}`;

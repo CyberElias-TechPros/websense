@@ -8,10 +8,10 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   MonitorSmartphone, Play, Square, RefreshCw, X, Globe2, Smartphone,
-  Monitor, Tablet, AlertTriangle, CheckCircle2, Camera,
+  Monitor, Tablet, AlertTriangle, CheckCircle2, Camera, Eye, ShieldAlert,
 } from 'lucide-react';
 import {
-  getQaCapabilities, startQaRun, getQaRuns, getQaMatrix, getQaRun, cancelQaRun, qaScreenshotUrl,
+  getQaCapabilities, startQaRun, getQaRuns, getQaMatrix, getQaRun, getQaExposure, cancelQaRun, qaScreenshotUrl,
 } from '../services/api';
 
 const CLASS_META = {
@@ -187,9 +187,10 @@ function NewRunCard({ capabilities, onStarted }) {
 // ---------------------------------------------------------------------------
 // Cell detail drawer
 // ---------------------------------------------------------------------------
-function CellDetail({ cell, onClose }) {
+function CellDetail({ cell, exposure, onClose }) {
   if (!cell) return null;
   const m = meta(cell.classification);
+  const exp = exposure?.byId?.[cell.id];
   return (
     <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-dark-900 border-l border-dark-700 shadow-2xl z-30 overflow-y-auto animate-slide-in">
       <div className="p-5 border-b border-dark-700 flex items-start justify-between sticky top-0 bg-dark-900 z-10">
@@ -248,6 +249,27 @@ function CellDetail({ cell, onClose }) {
           </div>
         )}
 
+        {exp && (
+          <div>
+            <p className="text-xs text-dark-400 mb-1 flex items-center gap-1">
+              <Eye className="w-3.5 h-3.5 text-purple-400" /> Exposure — detectability score {exp.score}/100
+            </p>
+            {exp.flags.length === 0 ? (
+              <p className="text-xs text-emerald-400">No detector-visible tells on this cell.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {exp.flags.map((f, i) => (
+                  <li key={i} className={`text-xs rounded-lg border px-2 py-1.5 ${SEV_COLOR[f.severity] || SEV_COLOR.low}`}>
+                    <span className="font-medium">{f.name}</span>
+                    {f.detail && <span className="font-mono opacity-80"> · {f.detail}</span>}
+                    <span className="block opacity-70 mt-0.5">{f.why}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div>
           <p className="text-xs text-dark-400 mb-1">Response headers (curated)</p>
           <div className="text-xs font-mono bg-dark-800 rounded-lg p-3 space-y-0.5 max-h-40 overflow-y-auto">
@@ -272,6 +294,77 @@ function CellDetail({ cell, onClose }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detection exposure panel (blue-hat view: how detectable is this traffic?)
+// ---------------------------------------------------------------------------
+const SEV_COLOR = {
+  high: 'bg-red-500/15 text-red-400 border-red-500/30',
+  medium: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  low: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+};
+
+function ExposurePanel({ exposure }) {
+  if (!exposure) return null;
+  const detectability = exposure.avgScore; // higher = MORE detectable
+  const verdict =
+    detectability >= 60 ? { label: 'Easily detected', cls: 'text-red-400' }
+    : detectability >= 30 ? { label: 'Detectable with effort', cls: 'text-amber-300' }
+    : { label: 'Low observable tells', cls: 'text-emerald-400' };
+
+  return (
+    <div className="bg-dark-900 border border-dark-700 rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-dark-200 flex items-center gap-2">
+        <Eye className="w-4 h-4 text-purple-400" /> Detection exposure
+        <span className="text-xs font-normal text-dark-400">— what a bot-detector would notice about these requests</span>
+      </h2>
+
+      <div className="flex flex-wrap items-center gap-4 mt-3">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl font-bold font-mono">{detectability}</span>
+          <div className="text-xs">
+            <div className="text-dark-400">avg detectability / 100</div>
+            <div className={`font-medium ${verdict.cls}`}>{verdict.label}</div>
+          </div>
+        </div>
+        <div className="text-xs text-dark-400">
+          {exposure.flaggedRecords}/{exposure.total} cells carry at least one detector-visible tell
+          {exposure.interarrivalCV != null && (
+            <span className="block mt-0.5">
+              inter-request timing CV: {exposure.interarrivalCV.toFixed(2)}{' '}
+              {exposure.interarrivalCV < 0.25 ? '(metronome — humans ≳ 1.0)' : '(human-plausible)'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {Object.keys(exposure.ruleCounts || {}).length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {Object.entries(exposure.ruleCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([rule, n]) => {
+              const entry = (exposure.catalog || []).find((c) => c.id === rule);
+              const sev = entry?.severity || 'low';
+              return (
+                <span
+                  key={rule}
+                  title={entry?.why || rule}
+                  className={`text-xs px-2 py-1 rounded-lg border cursor-help ${SEV_COLOR[sev]}`}
+                >
+                  {entry?.name || rule} × {n}
+                </span>
+              );
+            })}
+          {(exposure.cohortFlags || []).map((f) => (
+            <span key={f.rule} title={`${f.why}${f.detail ? ` — ${f.detail}` : ''}`} className={`text-xs px-2 py-1 rounded-lg border cursor-help ${SEV_COLOR[f.severity]}`}>
+              <ShieldAlert className="w-3 h-3 inline mr-1" />{f.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -345,6 +438,7 @@ export default function Qa({ socket }) {
   const [activeRuns, setActiveRuns] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
   const [matrix, setMatrix] = useState(null);
+  const [exposure, setExposure] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
   const [banner, setBanner] = useState('');
   const pollRef = useRef(null);
@@ -371,12 +465,21 @@ export default function Qa({ socket }) {
     try {
       const res = await getQaMatrix(runId);
       setMatrix(res.data);
+      if (res.data.status === 'done' || res.data.status === 'cancelled') {
+        try {
+          const exp = await getQaExposure(runId);
+          setExposure(exp.data);
+        } catch { setExposure(null); }
+      } else {
+        setExposure(null);
+      }
     } catch { /* noop */ }
   }, []);
 
   const selectRun = useCallback(async (runId) => {
     setSelectedRun(runId);
     setMatrix(null);
+    setExposure(null);
     await loadMatrix(runId);
   }, [loadMatrix]);
 
@@ -460,6 +563,8 @@ export default function Qa({ socket }) {
 
       <NewRunCard capabilities={capabilities} onStarted={(id) => { loadRuns(); selectRun(id); }} />
 
+      {exposure && <ExposurePanel exposure={exposure} />}
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="bg-dark-900 border border-dark-700 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-dark-200 mb-3">Recent runs</h2>
@@ -510,7 +615,7 @@ export default function Qa({ socket }) {
         </div>
       </div>
 
-      <CellDetail cell={selectedCell} onClose={() => setSelectedCell(null)} />
+      <CellDetail cell={selectedCell} exposure={exposure} onClose={() => setSelectedCell(null)} />
     </div>
   );
 }

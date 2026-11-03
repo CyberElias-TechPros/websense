@@ -63,6 +63,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_qa_runs_created ON qa_runs(created_at);
 `);
 
+// Schema evolution: identity columns feeding the exposure analyzer.
+function qaAddColumn(table, column, type) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.find((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
+qaAddColumn('qa_cells', 'user_agent', 'TEXT');
+qaAddColumn('qa_cells', 'accept_language', 'TEXT');
+qaAddColumn('qa_cells', 'viewport_w', 'INTEGER');
+
 const FLAGGED_CLASSES = new Set(['divergent', 'geo_blocked', 'device_blocked', 'redirect_loop', 'http_error']);
 
 // ---------------------------------------------------------------------------
@@ -110,8 +121,8 @@ export function insertCell(runId, cell) {
         run_id, url, device_id, device_label, device_type, vantage, proxy_host, mode,
         status_code, final_url, redirect_chain, headers, title, content_hash, text_sample,
         similarity, classification, signals, duration_ms, error, error_message,
-        screenshot_path, console_errors, failed_requests
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        screenshot_path, console_errors, failed_requests, user_agent, accept_language, viewport_w
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       runId,
@@ -137,7 +148,10 @@ export function insertCell(runId, cell) {
       cell.errorMessage || null,
       cell.screenshotPath || null,
       cell.consoleErrors ?? 0,
-      cell.failedRequests ?? 0
+      cell.failedRequests ?? 0,
+      cell.userAgent || null,
+      cell.acceptLanguage || null,
+      cell.viewportW ?? null
     );
   return Number(info.lastInsertRowid);
 }
