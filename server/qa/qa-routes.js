@@ -65,7 +65,7 @@ export default function createQaRouter({ runner, proxyManager = null, urlManager
   // Body: { urls?: string[], deviceIds?: string[], countries?: string[]|['*'],
   //         includeDirect?: boolean, mode?: 'http'|'browser'|'auto', note?: string }
   // -------------------------------------------------------------------------
-  router.post('/runs', (req, res) => {
+  router.post('/runs', async (req, res) => {
     const body = req.body || {};
 
     // --- URLs: default = all enabled target URLs --------------------------
@@ -88,17 +88,39 @@ export default function createQaRouter({ runner, proxyManager = null, urlManager
 
     // --- Vantages -----------------------------------------------------------
     const vantages = buildVantages(proxyManager, body);
-    if (vantages.length === 0) {
+
+    // Hard health gate: every proxy vantage must pass a fresh screen right now
+    // (cached pass within TTL counts). Failures are segregated OUT of the run
+    // and reported as unhealthy so the response shows exactly what was dropped.
+    const gateResults = await Promise.all(
+      vantages.map(async (v) => {
+        if (!v.proxy || typeof proxyManager?.ensureScreened !== 'function') {
+          return v; // DIRECT control, or no manager wired (tests)
+        }
+        try {
+          return (await proxyManager.ensureScreened(v.proxy)) ? v : null;
+        } catch {
+          return null;
+        }
+      })
+    );
+    const unhealthy = [
+      ...new Set(vantages.filter((_, i) => !gateResults[i]).map((v) => v.code)),
+    ];
+    const confirmed = gateResults.filter(Boolean);
+
+    if (confirmed.length === 0) {
       return res.status(400).json({
         error:
           'No vantage points available. Enable DIRECT (includeDirect: true) or add healthy proxies.',
+        unhealthyVantages: [...new Set(unhealthy)],
       });
     }
 
     const scope = {
       urls,
       deviceIds,
-      vantages,
+      vantages: confirmed,
       mode: body.mode || runner.config.mode,
       note: typeof body.note === 'string' ? body.note.slice(0, 200) : '',
     };
@@ -106,9 +128,13 @@ export default function createQaRouter({ runner, proxyManager = null, urlManager
     try {
       const result = runner.startRun(scope);
       logger.info(
-        `🧪 QA run ${result.runId.slice(0, 8)} started: ${urls.length} URLs × ${deviceIds.length} devices × ${vantages.length} vantages (${result.totalCells} cells, mode=${result.mode})`
+        `🧪 QA run ${result.runId.slice(0, 8)} started: ${urls.length} URLs × ${deviceIds.length} devices × ${confirmed.length} vantages (${result.totalCells} cells, mode=${result.mode})` +
+          (unhealthy.length ? ` [segregated unhealthy: ${[...new Set(unhealthy)].join(',')}]` : '')
       );
-      res.status(202).json(result);
+      res.status(202).json({
+        ...result,
+        ...(unhealthy.length ? { unhealthyVantages: [...new Set(unhealthy)] } : {}),
+      });
     } catch (err) {
       res.status(err.statusCode || 500).json({ error: err.message });
     }
@@ -232,6 +258,18 @@ function exposureCatalog() {
 // Vantage resolution helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Soft "verified first" filter: prefer proxies with a fresh passing screen.
+ * Falls back to the raw pool when a country has no verified proxy yet (e.g.
+ * right after boot, before screenAll finishes) — the run start route then
+ * hard-gates each chosen proxy through ensureScreened() before any cell runs.
+ */
+export function screenedFirst(proxyManager, pool) {
+  if (!proxyManager?.isScreenedOk) return pool;
+  const verified = pool.filter((p) => proxyManager.isScreenedOk(p));
+  return verified.length ? verified : pool;
+}
+
 /** Countries currently covered by at least one active proxy. */
 export function availableCountries(proxyManager) {
   const active = proxyManager.getActiveProxies ? proxyManager.getActiveProxies() : [];
@@ -243,7 +281,7 @@ export function availableCountries(proxyManager) {
     byCountry.get(code).push(p);
   }
   return [...byCountry.entries()]
-    .map(([code, proxies]) => ({ code, proxies: proxies.length }))
+    .map(([code, proxies]) => ({ code, proxies: screenedFirst(proxyManager, proxies).length }))
     .sort((a, b) => a.code.localeCompare(b.code));
 }
 
@@ -266,7 +304,7 @@ export function buildVantages(proxyManager, body = {}) {
     : allCountries.filter((c) => requested.includes(c.code));
 
   for (const { code } of chosen) {
-    const pool = proxyManager.getByCountry(code) || [];
+    const pool = screenedFirst(proxyManager, proxyManager.getByCountry(code) || []);
     for (const proxy of pool.slice(0, perCountry)) {
       vantages.push({
         code,

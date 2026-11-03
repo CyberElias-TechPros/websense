@@ -2,7 +2,7 @@
 
 > **Purpose:** Verify how *your own* properties behave for users in different countries and on different devices — detect geo-blocks, device blocks (app walls), redirect loops, and content divergence — using your proxy pool as vantage points and a device-profile matrix.
 >
-> **Status:** ✅ Implemented & tested (34 automated tests green + live smoke verified). Dashboard page: **Geo/Device QA** (`/qa`).
+> **Status:** ✅ Implemented & tested (67 automated tests green + live smoke verified). Dashboard page: **Geo/Device QA** (`/qa`).
 
 ---
 
@@ -62,7 +62,7 @@ Per URL, the runner picks the **modal good capture** as the baseline (the conten
 | Endpoint | What it does |
 |---|---|
 | `GET /api/qa/capabilities` | Device profiles, countries covered by your active proxy pool, browser-mode availability, config defaults |
-| `POST /api/qa/runs` | Start a run. Body (all optional): `urls[]`, `deviceIds[]`, `countries[] \| ["*"]`, `includeDirect` (default true), `mode: http\|browser\|auto`, `note`. Returns `202 {runId, totalCells, mode}` |
+| `POST /api/qa/runs` | Start a run. Body (all optional): `urls[]`, `deviceIds[]`, `countries[] \| ["*"]`, `includeDirect` (default true), `mode: http\|browser\|auto`, `note`. Returns `202 {runId, totalCells, mode, unhealthyVantages?}` — every proxy vantage is hard-gated through a fresh screen first; failures are segregated out and listed in `unhealthyVantages` |
 | `GET /api/qa/runs` | Recent runs + active run ids |
 | `GET /api/qa/runs/:id` | Run detail + all cells |
 | `GET /api/qa/runs/:id/matrix` | Pivoted heatmap structure (rows=URLs, columns=vantage×device, counts) |
@@ -195,4 +195,13 @@ server/qa/
 └── qa-routes.js         # /api/qa: capabilities, runs, matrix, exposure, sentinel ingest/observations
 ```
 
-Tests: `server/tests/unit/qa-modules.test.js` (28) + `server/tests/unit/qa-exposure.test.js` (26) + `server/tests/integration/qa-runner.test.js` (7 — real matrix execution against a local fixture site with geo/device gating, REST surface, exposure + trends + sentinel endpoints). Run: `cd server && npm test`.
+Tests: `server/tests/unit/qa-modules.test.js` (28) + `server/tests/unit/qa-exposure.test.js` (26) + `server/tests/integration/qa-runner.test.js` (7 — real matrix execution against a local fixture site with geo/device gating, REST surface, exposure + trends + sentinel endpoints) + `server/tests/integration/qa-vantages.test.js` (6 — verified-first vantage selection, hard health gate at run start, unhealthy segregation, DIRECT survival). Run: `cd server && npm test`.
+
+### Proxy health gate (confirmed-working only)
+
+QA never spends a cell on a proxy that hasn't just passed a screen:
+
+1. **Startup** — 5 s after boot, *every* non-archived/non-blacklisted proxy runs the full pre-flight screen (protocol → tunnel → auth → geo → blacklist → stability scoring, ≥ 40/100 to pass); results cached 30 min (`PROXY_SCREEN_TTL_MS`) and persisted in `proxy_screens`.
+2. **Continuous** — a rotating screen batch re-verifies the pool every `HEALTH_CHECK_INTERVAL_MS` (default 60 s), with circuit-breaker cooldown on failures.
+3. **Run start** — `POST /runs` hard-gates each proxy vantage through `ensureScreened()`; failures are *segregated* out of the run and reported in `unhealthyVantages` (DIRECT control always survives).
+4. **Selection** — country pools prefer verified proxies; the visit engine additionally re-screens per visit and skips entirely when nothing passes (`no_verified_proxy`).
