@@ -67,6 +67,10 @@ Per URL, the runner picks the **modal good capture** as the baseline (the conten
 | `GET /api/qa/runs/:id` | Run detail + all cells |
 | `GET /api/qa/runs/:id/matrix` | Pivoted heatmap structure (rows=URLs, columns=vantage×device, counts) |
 | `POST /api/qa/runs/:id/cancel` | Cancel a running sweep |
+| `GET /api/qa/runs/:id/exposure` | Per-cell detectability scores + rule catalog (blue-hat view) |
+| `GET /api/qa/exposure/visits?limit=N` | Offline exposure audit of the engine's recent `visits` |
+| `GET /api/qa/exposure/trends?limit=N` | Cross-run detectability snapshots (powers the trend chart) |
+| `POST /api/qa/sentinel/ingest` / `GET /api/qa/sentinel/observations` | Bridge for sentinel middleware observations from your own sites |
 | `GET /api/qa/cells/:id/screenshot` | Cell screenshot (browser mode; path-traversal-guarded) |
 
 Socket.IO live events: `qa:progress` `{runId, done, total, cell}` and `qa:run_complete` `{runId, status, flagged, …}`.
@@ -140,9 +144,30 @@ The report returns a 0–100 *detectability score* per cell plus aggregates (rul
 
 Runs the same analyzer **offline over the engine's own recent `visits` table** — a behavioral audit of existing traffic patterns without generating anything new.
 
-### 3. Sentinel — the defensive half to mount on your own sites
+### 3. Trends & regression alerts — `GET /api/qa/exposure/trends?limit=20`
 
-`server/qa/sentinel.js` is a reference Express middleware that scores inbound requests on your properties (automation UAs, missing browser headers, burst rates, cookie-less revisits) and recognizes `X-Websense-QA` probes as self-traffic (`selfProbe: true`). Mount it on your sites, point `onObservation` at `POST /api/qa/sentinel/ingest`, and read back `/api/qa/sentinel/observations` — closing the loop: **websense generates, sentinel detects, the dashboard shows whether detection worked.**
+Every finished run freezes a snapshot (`qa_exposure_snapshots`: avg detectability, rule counts, severity totals, cohort flags) that **survives cell retention cleanup**, so detectability is chartable across successive runs. The dashboard plots the sparkline and:
+
+- **Regression alert** when a run's average detectability rises ≥ **10 points** over the previous run, or lands in the *easily detected* band (≥ 60) — surfaced as a red warning in the panel;
+- **Improvement notice** when it drops ≥ 10 points;
+- Per-rule deltas (`↑3` / `↓2`) for the rules that moved, so you can see *which* mannerism changed.
+
+### 4. Sentinel — the defensive half to mount on your own sites
+
+`server/qa/sentinel.js` is a reference Express middleware that scores inbound requests on your properties:
+
+| Sentinel signal | Points | Source |
+|---|---|---|
+| `automation-ua` | 50 | curl/wget/python-requests, headless/phantom, known crawlers |
+| `outdated-tls` | 50 | connection negotiated TLS < 1.2 (`req.socket.getProtocol()`) — modern browsers don't |
+| `rapid-fire` / `elevated-rate` | 30 / 10 | ≥ 20 / ≥ 8 requests per identity in 60 s |
+| `no-accept-language` | 20 | browser UA without `Accept-Language` |
+| `behavior-gap` | 20 | site's own beacon reports **0** behavioral events (`x-sentinel-events: 0` header) — absence of the header is neutral |
+| `no-fetch-metadata` | 15 | browser UA without any `Sec-Fetch-*` |
+| `no-client-hints` | 10 | Chromium-family UA without `sec-ch-ua` (Chrome ≥ 89 always sends it; Safari excluded) |
+| `no-cookies-on-revisit` | 10 | browser UA, no cookies |
+
+It recognizes `X-Websense-QA` probes as self-traffic (`selfProbe: true`), annotates `req.sentinel`, sets an `X-Sentinel-Score` response header for devtools calibration, and **never blocks**. Mount it on your sites, point `onObservation` at `POST /api/qa/sentinel/ingest`, and read back `/api/qa/sentinel/observations` — closing the loop: **websense generates, sentinel detects, the dashboard shows whether detection worked.**
 
 ```
 websense QA run ──► your site's sentinel ──► /api/qa/sentinel/ingest
@@ -170,4 +195,4 @@ server/qa/
 └── qa-routes.js         # /api/qa: capabilities, runs, matrix, exposure, sentinel ingest/observations
 ```
 
-Tests: `server/tests/unit/qa-modules.test.js` (28) + `server/tests/unit/qa-exposure.test.js` (21) + `server/tests/integration/qa-runner.test.js` (7 — real matrix execution against a local fixture site with geo/device gating, REST surface, exposure + sentinel endpoints). Run: `cd server && npm test`.
+Tests: `server/tests/unit/qa-modules.test.js` (28) + `server/tests/unit/qa-exposure.test.js` (26) + `server/tests/integration/qa-runner.test.js` (7 — real matrix execution against a local fixture site with geo/device gating, REST surface, exposure + trends + sentinel endpoints). Run: `cd server && npm test`.

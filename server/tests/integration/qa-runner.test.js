@@ -312,6 +312,14 @@ describe('qa runner integration (local fixture, virtual vantages)', () => {
     expect(ing.status).toBe(202);
     const obs = await request(app).get('/api/qa/sentinel/observations');
     expect(obs.body.observations[0].selfProbe).toBe(true);
+
+    // Frozen snapshot feeds the cross-run detectability trend.
+    const trends = await request(app).get('/api/qa/exposure/trends');
+    expect(trends.status).toBe(200);
+    const snap = trends.body.snapshots.find((s) => s.runId === runId);
+    expect(snap).toBeTruthy();
+    expect(snap.ruleCounts['no-js-execution']).toBe(2);
+    expect(snap.avgScore).toBeGreaterThan(0);
   }, 40_000);
 
   it('rejects router runs with no vantage points and oversized scopes', async () => {

@@ -21,6 +21,7 @@ import { captureHttp } from './capture-http.js';
 import { captureBrowser, isBrowserCaptureAvailable } from './capture-browser.js';
 import { pickBaselineCell, classifyCell, isFlagged, DEFAULT_SIMILARITY_THRESHOLD } from './compare.js';
 import { QA_CLASS } from './signals.js';
+import { summarizeExposure, recordFromQaCell } from './exposure.js';
 import * as store from './store.js';
 import logger from '../utils/logger.js';
 
@@ -256,6 +257,25 @@ export class QaRunner extends EventEmitter {
     const cancelled = this.cancelRequested.has(runId);
     store.updateRunProgress(runId, { total, done, ok: Math.max(0, ok), flagged, errors });
     store.finishRun(runId, cancelled ? 'cancelled' : 'done');
+
+    // Freeze the exposure view for trend charting (survives cell cleanup).
+    if (!cancelled) {
+      try {
+        const rows = store.getRunCells(runId);
+        const exp = summarizeExposure(rows.map(recordFromQaCell));
+        store.insertExposureSnapshot({
+          runId,
+          total: exp.total,
+          flaggedRecords: exp.flaggedRecords,
+          avgScore: exp.avgScore,
+          ruleCounts: exp.ruleCounts,
+          severityTotals: exp.severityTotals,
+          cohortFlags: exp.cohortFlags,
+        });
+      } catch (err) {
+        logger.warn(`QA exposure snapshot failed: ${err.message}`);
+      }
+    }
 
     this.activeRuns.delete(runId);
     this.cancelRequested.delete(runId);

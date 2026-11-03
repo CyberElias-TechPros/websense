@@ -74,6 +74,49 @@ qaAddColumn('qa_cells', 'user_agent', 'TEXT');
 qaAddColumn('qa_cells', 'accept_language', 'TEXT');
 qaAddColumn('qa_cells', 'viewport_w', 'INTEGER');
 
+// Per-run exposure snapshot — written once per finished run so detectability
+// trends stay chartable after qa_cells retention cleanup.
+db.exec(`CREATE TABLE IF NOT EXISTS qa_exposure_snapshots (
+  run_id          TEXT PRIMARY KEY,
+  created_at      TEXT,
+  total           INTEGER,
+  flagged_records INTEGER,
+  avg_score       REAL,
+  rule_counts     TEXT,   -- JSON
+  severity_totals TEXT,   -- JSON
+  cohort_flags    TEXT    -- JSON
+);`);
+
+export function insertExposureSnapshot(s) {
+  db.prepare(`INSERT OR REPLACE INTO qa_exposure_snapshots
+    (run_id, created_at, total, flagged_records, avg_score, rule_counts, severity_totals, cohort_flags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    s.runId,
+    s.createdAt || new Date().toISOString(),
+    s.total || 0,
+    s.flaggedRecords || 0,
+    typeof s.avgScore === 'number' ? s.avgScore : 0,
+    JSON.stringify(s.ruleCounts || {}),
+    JSON.stringify(s.severityTotals || {}),
+    JSON.stringify(s.cohortFlags || []),
+  );
+}
+
+export function listExposureSnapshots(limit = 20) {
+  const rows = db.prepare(`SELECT * FROM qa_exposure_snapshots
+    ORDER BY created_at DESC LIMIT ?`).all(Math.max(1, Math.min(50, limit)));
+  return rows.map((r) => ({
+    runId: r.run_id,
+    createdAt: r.created_at,
+    total: r.total,
+    flaggedRecords: r.flagged_records,
+    avgScore: r.avg_score,
+    ruleCounts: JSON.parse(r.rule_counts || '{}'),
+    severityTotals: JSON.parse(r.severity_totals || '{}'),
+    cohortFlags: JSON.parse(r.cohort_flags || '[]'),
+  }));
+}
+
 const FLAGGED_CLASSES = new Set(['divergent', 'geo_blocked', 'device_blocked', 'redirect_loop', 'http_error']);
 
 // ---------------------------------------------------------------------------

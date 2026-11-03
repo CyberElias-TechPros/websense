@@ -11,7 +11,8 @@ import {
   Monitor, Tablet, AlertTriangle, CheckCircle2, Camera, Eye, ShieldAlert,
 } from 'lucide-react';
 import {
-  getQaCapabilities, startQaRun, getQaRuns, getQaMatrix, getQaRun, getQaExposure, cancelQaRun, qaScreenshotUrl,
+  getQaCapabilities, startQaRun, getQaRuns, getQaMatrix, getQaRun, getQaExposure, getQaExposureTrends,
+  cancelQaRun, qaScreenshotUrl,
 } from '../services/api';
 
 const CLASS_META = {
@@ -307,7 +308,84 @@ const SEV_COLOR = {
   low: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
 };
 
-function ExposurePanel({ exposure }) {
+// Regression alert threshold: avg detectability must move this many points
+// between consecutive runs before the dashboard shouts about it.
+const REGRESSION_PTS = 10;
+
+function TrendWidget({ snapshots, catalog }) {
+  if (!snapshots || snapshots.length < 2) return null;
+  const series = [...snapshots].reverse(); // oldest → newest
+  const latest = series[series.length - 1];
+  const prev = series[series.length - 2];
+  const delta = latest.avgScore - prev.avgScore;
+  const regressed = delta >= REGRESSION_PTS || latest.avgScore >= 60;
+  const improved = delta <= -REGRESSION_PTS;
+
+  const W = 220; const H = 46; const PAD = 4;
+  const x = (i) => PAD + (i * (W - PAD * 2)) / (series.length - 1);
+  const y = (v) => H - PAD - (v / 100) * (H - PAD * 2);
+  const points = series.map((s, i) => `${x(i).toFixed(1)},${y(s.avgScore).toFixed(1)}`).join(' ');
+  const stroke = regressed ? '#f87171' : improved ? '#34d399' : '#a78bfa';
+
+  const ruleDeltas = Object.entries(latest.ruleCounts)
+    .map(([rule, n]) => [rule, n - (prev.ruleCounts?.[rule] || 0)])
+    .filter(([, d]) => d !== 0)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .slice(0, 4);
+
+  return (
+    <div className="flex flex-wrap items-start gap-5 mt-4 pt-4 border-t border-dark-700/60">
+      <div>
+        <p className="text-xs text-dark-400 mb-1">Detectability across runs</p>
+        <svg width={W} height={H} className="block">
+          <line x1={PAD} y1={y(50)} x2={W - PAD} y2={y(50)} stroke="#3f3f46" strokeDasharray="3 4" />
+          <polyline points={points} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+          {series.map((s, i) => (
+            <circle key={s.runId || i} cx={x(i)} cy={y(s.avgScore)} r={i === series.length - 1 ? 3.5 : 2} fill={stroke} />
+          ))}
+        </svg>
+        <p className="text-[10px] text-dark-500 mt-0.5">{series.length} runs · dashed = 50</p>
+      </div>
+
+      <div className="flex-1 min-w-[240px] text-xs space-y-1.5">
+        {regressed ? (
+          <p className="text-red-400 font-medium flex items-center gap-1">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {delta >= REGRESSION_PTS
+              ? `Detection regression: avg detectability +${delta.toFixed(0)} vs previous run`
+              : `Detectability at ${latest.avgScore.toFixed(0)}/100 — easily detected band (≥60)`}
+          </p>
+        ) : improved ? (
+          <p className="text-emerald-400 font-medium">
+            Improvement: avg detectability {delta.toFixed(0)} vs previous run
+          </p>
+        ) : (
+          <p className="text-dark-400">
+            Stable vs previous run ({delta >= 0 ? '+' : ''}{delta.toFixed(0)} pts, threshold ±{REGRESSION_PTS})
+          </p>
+        )}
+        {ruleDeltas.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {ruleDeltas.map(([rule, d]) => {
+              const name = (catalog || []).find((c) => c.id === rule)?.name || rule;
+              return (
+                <span
+                  key={rule}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border ${d > 0 ? 'bg-red-500/10 text-red-300 border-red-500/25' : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25'}`}
+                  title={`rule ${rule}: ${prev.ruleCounts?.[rule] || 0} → ${latest.ruleCounts[rule] || 0}`}
+                >
+                  {name} {d > 0 ? `↑${d}` : `↓${Math.abs(d)}`}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExposurePanel({ exposure, trends }) {
   if (!exposure) return null;
   const detectability = exposure.avgScore; // higher = MORE detectable
   const verdict =
@@ -365,6 +443,8 @@ function ExposurePanel({ exposure }) {
           ))}
         </div>
       )}
+
+      <TrendWidget snapshots={trends} catalog={exposure.catalog} />
     </div>
   );
 }
@@ -439,6 +519,7 @@ export default function Qa({ socket }) {
   const [selectedRun, setSelectedRun] = useState(null);
   const [matrix, setMatrix] = useState(null);
   const [exposure, setExposure] = useState(null);
+  const [trends, setTrends] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
   const [banner, setBanner] = useState('');
   const pollRef = useRef(null);
@@ -470,8 +551,13 @@ export default function Qa({ socket }) {
           const exp = await getQaExposure(runId);
           setExposure(exp.data);
         } catch { setExposure(null); }
+        try {
+          const tr = await getQaExposureTrends(20);
+          setTrends(tr.data.snapshots || []);
+        } catch { setTrends(null); }
       } else {
         setExposure(null);
+        setTrends(null);
       }
     } catch { /* noop */ }
   }, []);
@@ -480,6 +566,7 @@ export default function Qa({ socket }) {
     setSelectedRun(runId);
     setMatrix(null);
     setExposure(null);
+    setTrends(null);
     await loadMatrix(runId);
   }, [loadMatrix]);
 
@@ -563,7 +650,7 @@ export default function Qa({ socket }) {
 
       <NewRunCard capabilities={capabilities} onStarted={(id) => { loadRuns(); selectRun(id); }} />
 
-      {exposure && <ExposurePanel exposure={exposure} />}
+      {exposure && <ExposurePanel exposure={exposure} trends={trends} />}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="bg-dark-900 border border-dark-700 rounded-xl p-4">

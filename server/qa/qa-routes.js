@@ -183,6 +183,12 @@ export default function createQaRouter({ runner, proxyManager = null, urlManager
     res.json({ scope: 'visits', limit, ...summary, results: undefined, byId, catalog: exposureCatalog() });
   });
 
+  /** Detectability trend across successive runs (snapshots survive cell cleanup). */
+  router.get('/exposure/trends', (req, res) => {
+    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit || '20', 10)));
+    res.json({ snapshots: store.listExposureSnapshots(limit) });
+  });
+
   /** Ingest endpoint for sentinel middleware observations from own sites. */
   const sentinelLog = [];
   router.post('/sentinel/ingest', (req, res) => {

@@ -37,6 +37,8 @@ export function scoreRequest({
   hasCookies = false,
   recentRequestCount = 0,   // requests from this ip/ua in the trailing window
   windowSeconds = 60,
+  tlsProtocol = null,       // e.g. 'TLSv1.3' from req.socket.getProtocol()
+  eventCount = null,        // behavioral events reported by the site's beacon (x-sentinel-events)
 }) {
   const signals = [];
   let score = 0;
@@ -59,9 +61,31 @@ export function scoreRequest({
       score += 15;
     }
     if (!hasCookies) { signals.push({ id: 'no-cookies-on-revisit', points: 10 }); score += 10; }
+
+    // Chromium-family UAs (Chrome/Edge/Chromium, not Safari/old browsers) send
+    // Client Hints since Chrome 89 — a Chromium UA without them is inconsistent.
+    if (/chrome\/|edg\/|chromium\//i.test(ua) && !headers['sec-ch-ua'] && !headers['sec-ch-ua-mobile']) {
+      signals.push({ id: 'no-client-hints', points: 10 });
+      score += 10;
+    }
   }
 
-  // 4. Burstiness from one identity.
+  // 4. Transport: pre-TLS-1.2 stacks are bots/legacy scrapers far more often
+  // than real modern clients (skipped when protocol is unknown, e.g. plain HTTP).
+  if (typeof tlsProtocol === 'string' && /^TLSv1(\.0|\.1)?$/.test(tlsProtocol)) {
+    signals.push({ id: 'outdated-tls', points: 50, detail: tlsProtocol });
+    score += 50;
+  }
+
+  // 5. Behavior gap: the site's own instrumentation reports zero behavioral
+  // events for a request that claims to be a browsing session. Absence of the
+  // header means "unknown" and does not score.
+  if (eventCount !== null && eventCount !== undefined && Number(eventCount) <= 0) {
+    signals.push({ id: 'behavior-gap', points: 20, detail: '0 events observed' });
+    score += 20;
+  }
+
+  // 6. Burstiness from one identity.
   if (recentRequestCount >= 20 && windowSeconds <= 60) {
     signals.push({ id: 'rapid-fire', points: 30, detail: `${recentRequestCount}/${windowSeconds}s` });
     score += 30;
@@ -96,13 +120,22 @@ export default function createSentinel({ onObservation = null, windowMs = 60_000
       for (const [k, v] of hits) if (!v.length || v[v.length - 1] < cutoff) hits.delete(k);
     }
 
+    const headerBag = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
+    const tlsProtocol = typeof req.socket?.getProtocol === 'function' ? req.socket.getProtocol() : null;
+    const rawEvents = headerBag['x-sentinel-events'];
+    const eventCount = rawEvents !== undefined && rawEvents !== '' && !Number.isNaN(Number(rawEvents))
+      ? Number(rawEvents)
+      : null;
+
     const obs = scoreRequest({
       ip,
       ua,
-      headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), String(v)])),
+      headers: headerBag,
       hasCookies: !!req.headers.cookie,
       recentRequestCount: list.length,
       windowSeconds: Math.round(windowMs / 1000),
+      tlsProtocol,
+      eventCount,
     });
 
     const observation = {

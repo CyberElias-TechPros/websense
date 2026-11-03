@@ -208,11 +208,61 @@ describe('sentinel middleware', () => {
         'accept-language': 'en-US,en;q=0.9',
         'sec-fetch-mode': 'navigate',
         'sec-fetch-dest': 'document',
+        'sec-ch-ua': '"Chromium";v="126", "Google Chrome";v="126"',
       },
       hasCookies: true,
       recentRequestCount: 1,
     });
     expect(r.score).toBeLessThan(10);
+    expect(r.signals).toHaveLength(0);
+  });
+
+  it('Chromium UA without Client Hints is inconsistent', () => {
+    const r = scoreRequest({
+      ua: DESKTOP_UA,
+      headers: { 'user-agent': DESKTOP_UA, 'accept-language': 'en', 'sec-fetch-mode': 'navigate' },
+      hasCookies: true,
+    });
+    expect(r.signals.map((s) => s.id)).toContain('no-client-hints');
+  });
+
+  it('Safari UA (no Client Hints ever) is not flagged for them', () => {
+    const safari = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15';
+    const r = scoreRequest({
+      ua: safari,
+      headers: { 'user-agent': safari, 'accept-language': 'en', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' },
+      hasCookies: true,
+    });
+    expect(r.signals.map((s) => s.id)).not.toContain('no-client-hints');
+    expect(r.score).toBeLessThan(10);
+  });
+
+  it('pre-TLS-1.2 transport is a strong tell; unknown protocol is neutral', () => {
+    const weak = scoreRequest({ ua: DESKTOP_UA, headers: {}, tlsProtocol: 'TLSv1.0' });
+    expect(weak.signals.map((s) => s.id)).toContain('outdated-tls');
+    expect(weak.score).toBeGreaterThanOrEqual(50);
+    const modern = scoreRequest({ ua: DESKTOP_UA, headers: {}, tlsProtocol: 'TLSv1.3' });
+    expect(modern.signals.map((s) => s.id)).not.toContain('outdated-tls');
+    const unknown = scoreRequest({ ua: DESKTOP_UA, headers: {}, tlsProtocol: null });
+    expect(unknown.signals.map((s) => s.id)).not.toContain('outdated-tls');
+  });
+
+  it('explicit zero behavioral events score a behavior gap; absent beacon is neutral', () => {
+    const gap = scoreRequest({ ua: DESKTOP_UA, headers: { 'accept-language': 'en', 'sec-fetch-mode': 'navigate' }, hasCookies: true, eventCount: 0 });
+    expect(gap.signals.map((s) => s.id)).toContain('behavior-gap');
+    const unknown = scoreRequest({ ua: DESKTOP_UA, headers: { 'accept-language': 'en', 'sec-fetch-mode': 'navigate' }, hasCookies: true, eventCount: null });
+    expect(unknown.signals.map((s) => s.id)).not.toContain('behavior-gap');
+  });
+
+  it('middleware forwards the x-sentinel-events beacon value', async () => {
+    const obs = [];
+    const app = express();
+    app.use(createSentinel({ onObservation: (o) => obs.push(o) }));
+    app.get('/', (req, res) => res.end('ok'));
+    await request(app).get('/').set('x-sentinel-events', '0');
+    expect(obs[0].signals.map((s) => s.id)).toContain('behavior-gap');
+    await request(app).get('/').set('x-sentinel-events', '7');
+    expect(obs[1].signals.map((s) => s.id)).not.toContain('behavior-gap');
   });
 
   it('recognizes our own QA probes as self-traffic, not attacks', () => {
