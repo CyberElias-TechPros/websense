@@ -1,7 +1,10 @@
 import axios from 'axios';
+import { getServerOrigin } from './serverBase';
 
 // In dev, Vite proxies /api + /socket.io to the backend. In production the
 // client is served by the backend (same origin), so relative URLs work.
+// Native (Capacitor) builds bundle the assets and point at a runtime-configured
+// server origin instead — see services/serverBase.js and Settings → Server.
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 // Optional API token when the backend runs with API_TOKEN set.
@@ -15,8 +18,11 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach Bearer token to every request when one is configured
+// Resolve the target server per request (origin may be set at runtime) and
+// attach the Bearer token when one is configured.
 api.interceptors.request.use((config) => {
+  const origin = getServerOrigin();
+  config.baseURL = origin ? `${origin}/api` : API_BASE;
   const token = getApiToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
@@ -83,6 +89,24 @@ export const getConfig = () => api.get('/config');
 export const updateConfig = (config) => api.patch('/config', config);
 export const cleanupDb = (days) => api.post('/db/cleanup', { days });
 export const getLogs = (params) => api.get('/logs', { params });
+
+// -------------------------------------------------------------------------
+// Geo/Device QA — own-property testing across countries × device profiles
+// -------------------------------------------------------------------------
+export const getQaCapabilities = () => api.get('/qa/capabilities');
+export const startQaRun = (body) => api.post('/qa/runs', body);
+export const getQaRuns = (limit = 30) => api.get('/qa/runs', { params: { limit } });
+export const getQaRun = (id) => api.get(`/qa/runs/${id}`);
+export const getQaMatrix = (id) => api.get(`/qa/runs/${id}/matrix`);
+export const cancelQaRun = (id) => api.post(`/qa/runs/${id}/cancel`);
+export const getQaExposure = (id) => api.get(`/qa/runs/${id}/exposure`);
+export const getQaExposureTrends = (limit = 20) => api.get('/qa/exposure/trends', { params: { limit } });
+export const getQaVisitsExposure = (limit = 200) => api.get('/qa/exposure/visits', { params: { limit } });
+export const getSentinelObservations = (limit = 100) => api.get('/qa/sentinel/observations', { params: { limit } });
+export const qaScreenshotUrl = (cellId) => {
+  const t = getApiToken();
+  return `${API_BASE}/qa/cells/${cellId}/screenshot${t ? `?token=${encodeURIComponent(t)}` : ''}`;
+};
 
 // -------------------------------------------------------------------------
 // Wizard — guided setup

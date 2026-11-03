@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import { getServerOrigin, isNativeApp } from '../services/serverBase';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
@@ -15,9 +16,14 @@ export function useSocket() {
   const [liveVisits, setLiveVisits] = useState([]);
 
   useEffect(() => {
+    // Native app with no server configured yet — wait in Settings instead of
+    // hammering the bundled-assets origin with doomed connection attempts.
+    const origin = getServerOrigin();
+    if (isNativeApp() && !origin) return undefined;
+
     const token =
       import.meta.env.VITE_API_TOKEN || localStorage.getItem('websense_api_token') || '';
-    const socket = io(SOCKET_URL, {
+    const socket = io(origin || SOCKET_URL || undefined, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,

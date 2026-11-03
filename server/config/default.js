@@ -8,11 +8,13 @@ export default {
   server: {
     port: parseInt(process.env.PORT || '3001', 10),
     host: process.env.HOST || '0.0.0.0',
-    // Comma-separated allowed origins for CORS (dashboard origin, dev server, etc.)
-    // Default is localhost only — the prod dashboard is served same-origin from
-    // this server, so no wildcard is needed. Set CORS_ORIGINS=* only if you
-    // expose the API to other origins (pair it with API_TOKEN).
-    corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001')
+    // Comma-separated allowed origins for CORS (dashboard origin, dev server,
+    // native Android/iOS app WebView). Defaults cover the web dashboard plus
+    // the Capacitor app's origin (https://localhost / capacitor://localhost —
+    // the app talks to this server cross-origin from a bundled UI). Set
+    // CORS_ORIGINS=* only if you expose the API to other origins (pair it
+    // with API_TOKEN).
+    corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,https://localhost,http://localhost,capacitor://localhost')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -466,6 +468,28 @@ export default {
   // -------------------------------------------------------------------------
   observability: {
     enabled: process.env.OBSERVABILITY !== '0',
+  },
+
+  // -------------------------------------------------------------------------
+  // Geo/Device QA testing (sites you own). Runs a URL × device × country
+  // matrix through proxy vantage points at an open, low-volume cadence and
+  // reports geo-blocks / device-blocks / content divergence. Every request
+  // identifies itself via X-Websense-QA (whitelist it in your sites' WAF and
+  // filter it in GA4). NO stealth/evasion — whitelist beats evade.
+  // -------------------------------------------------------------------------
+  qa: {
+    enabled: process.env.QA_ENABLED !== '0',
+    mode: process.env.QA_CAPTURE_MODE || 'http', // http | browser | auto
+    concurrency: parseInt(process.env.QA_CONCURRENCY || '2', 10),
+    requestDelayMs: parseInt(process.env.QA_REQUEST_DELAY_MS || '1000', 10),
+    timeoutMs: parseInt(process.env.QA_TIMEOUT_MS || '30000', 10),
+    maxCells: parseInt(process.env.QA_MAX_CELLS || '400', 10),
+    maxResponseBytes: parseInt(process.env.QA_MAX_RESPONSE_BYTES || String(512 * 1024), 10),
+    identifyHeader: process.env.QA_IDENTIFY_HEADER !== '0',
+    screenshotDir: process.env.QA_SCREENSHOT_DIR || '',   // default: server/data/qa-screenshots
+    sweepIntervalMinutes: parseInt(process.env.QA_SWEEP_INTERVAL_MIN || '0', 10), // 0 = manual only
+    similarityThreshold: parseFloat(process.env.QA_SIMILARITY_THRESHOLD || '0.72'),
+    cleanupDays: parseInt(process.env.QA_CLEANUP_DAYS || '14', 10),
   },
 
   database: {

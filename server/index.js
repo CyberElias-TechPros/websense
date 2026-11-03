@@ -80,6 +80,9 @@ import VPNManager from './core/vpn-manager.js';
 import ObservabilityHub from './core/observability.js';
 import { getRandomFingerprint } from './core/user-agents.js';
 import createRoutes from './api/routes.js';
+import QaRunner from './qa/runner.js';
+import createQaRouter, { buildVantages } from './qa/qa-routes.js';
+import { DEVICE_PROFILES } from './qa/device-profiles.js';
 import { notFound, errorHandler } from './middleware/error-handler.js';
 import logger from './utils/logger.js';
 import db from './database/db.js';
@@ -378,6 +381,32 @@ logger.info(`🔗 Loaded ${TARGET_URLS.length} target URLs`);
 // ---------------------------------------------------------------------------
 app.use('/api', createRoutes(scheduler, proxyManager, urlManager, io, sessionManager, profileManager, utmManager, deviceManager, searchSimulator, captchaSolver, socialReferral, geoManager, analyticsManager, trafficPatterns, webhookManager, reportingEngine, contentVerifier, proxyIntelligence, abTesting, adViewability, screenshotSystem, multiProject, distributedWorkers, networkCondition, mlBehavior, detectionFeedback, videoMedia, ecommerceFunnel, formInteraction, cookieConsent, dnsSimulation, cdnEdge, apiAjax, competitorAnalysis, multiPlatformSync, pluginSystem, cliTool, desktopApp, proxyEvaluator, proxyStrategies, aiIntegration, proxyHealthMonitor, proxyRotationScheduler, smartRetry, geoRestrictions, proxyPerformanceTracker, proxyIntelligenceAnalyzer, notificationManager, proxyAutoRefresh, proxyPoolManager, periodicHealthChecker, freeProxyFetcher, behaviorDirector, domainRules, observability, proxyScreener, vpnManager));
 
+// ---------------------------------------------------------------------------
+// Geo/Device QA testing (own properties): URL × device × country matrix,
+// block/divergence detection, comparison heatmap. Manual or interval sweeps.
+// ---------------------------------------------------------------------------
+const qaRunner = new QaRunner({ io, config: config.qa });
+if (config.qa.enabled !== false) {
+  app.use('/api/qa', createQaRouter({ runner: qaRunner, proxyManager, urlManager }));
+  logger.info(
+    `🧪 Geo/Device QA: ENABLED (mode=${config.qa.mode}, delay=${config.qa.requestDelayMs}ms, ` +
+    `maxCells=${config.qa.maxCells}, sweep=${config.qa.sweepIntervalMinutes > 0 ? config.qa.sweepIntervalMinutes + 'min' : 'manual'})`
+  );
+  if (config.qa.sweepIntervalMinutes > 0) {
+    qaRunner.enableAutoSweep(
+      () => ({
+        urls: urlManager.getAll().filter((u) => u.enabled).map((u) => u.url),
+        deviceIds: DEVICE_PROFILES.map((d) => d.id),
+        vantages: buildVantages(proxyManager, {}),
+        mode: config.qa.mode,
+      }),
+      config.qa.sweepIntervalMinutes
+    );
+  }
+} else {
+  logger.info('🧪 Geo/Device QA: disabled (QA_ENABLED=0)');
+}
+
 // --- Health check endpoint ---
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', uptime: process.uptime(), mode: config.engine.mode })
@@ -465,6 +494,7 @@ if (config.observability?.enabled !== false) {
 function shutdown(signal) {
   logger.info(`${signal} received — shutting down...`);
   scheduler.stop();
+  qaRunner.stop();
   vpnManager?.disconnect().catch(() => {}); // tear down any managed VPN tunnel
   io.close();
   server.close(() => {

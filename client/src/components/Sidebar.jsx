@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Shield, Link2, History,
-  BarChart3, Settings, ScrollText, Globe, Wifi, WifiOff, Wand2, TrendingUp, Layers, Bell, HeartPulse, Brain,
+  BarChart3, Settings, ScrollText, Globe, Wifi, WifiOff, Wand2, TrendingUp, Layers, Bell, HeartPulse, Brain, MonitorSmartphone,
 } from 'lucide-react';
 
 const navItems = [
@@ -18,12 +18,25 @@ const navItems = [
   { path: '/logs', label: 'Logs', icon: ScrollText },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/health-checker', label: 'Health Checker', icon: HeartPulse },
+  { path: '/qa', label: 'Geo/Device QA', icon: MonitorSmartphone },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar({ connected }) {
+export default function Sidebar({ connected, open = false, onClose = () => {} }) {
   return (
-    <aside className="w-64 bg-dark-900 border-r border-dark-700 flex flex-col fixed h-full z-10 shrink-0">
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`w-64 bg-dark-900 border-r border-dark-700 flex flex-col fixed inset-y-0 left-0 z-40 shrink-0 transition-transform duration-200 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0`}
+      >
       <div className="p-5 border-b border-dark-700">
         <div className="flex items-center gap-3">
           <Globe className="w-8 h-8 text-blue-500" />
@@ -40,6 +53,7 @@ export default function Sidebar({ connected }) {
             key={path}
             to={path}
             end={path === '/'}
+            onClick={onClose}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
                 isActive
@@ -62,6 +76,7 @@ export default function Sidebar({ connected }) {
           }
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
