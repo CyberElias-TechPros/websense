@@ -519,6 +519,30 @@ export class ProxyScreener {
     }
   }
 
+  /**
+   * Screen every proxy in the pool (concurrency-limited). Intended for
+   * "test all on startup" workflows; results are cached/persisted.
+   */
+  async screenAll(proxies, concurrency = 10) {
+    if (!this.config.enabled) return [];
+    const list = Array.isArray(proxies) ? proxies : [];
+    const results = [];
+    let idx = 0;
+    const worker = async () => {
+      while (idx < list.length) {
+        const i = idx++;
+        try {
+          const r = await this.screen(list[i]);
+          results[i] = r;
+        } catch (e) {
+          results[i] = { host: list[i]?.host, port: list[i]?.port, pass: false, reasons: [e.message] };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, list.length)) }, worker));
+    return results;
+  }
+
   _persistScreen(report) {
     try {
       db.prepare(`INSERT OR REPLACE INTO proxy_screens

@@ -207,6 +207,21 @@ setInterval(() => { behaviorDirector.init().catch(() => {}); }, 10 * 60 * 1000);
 const freeProxyFetcher = new FreeProxyFetcher(proxyManager, config.freeProxies);
 freeProxyFetcher.setScreener(proxyScreener); // probe sampling detects real protocol
 freeProxyFetcher.startAutoRefresh(); // delayed initial fetch + periodic refresh
+// Test every proxy on startup and keep only working ones for visiting sites
+setTimeout(async () => {
+  try {
+    const all = proxyManager.getAll ? proxyManager.getAll() : [];
+    const targets = all.filter(p => !p.archived && !p.blacklisted);
+    if (targets.length && proxyScreener?.screenAll) {
+      logger.info(`🧪 Pre-screening all proxies on startup (${targets.length} candidates)...`);
+      const results = await proxyScreener.screenAll(targets, 8);
+      const passed = results.filter(r => r && r.pass).length;
+      logger.info(`✅ Proxy pre-screen complete: ${passed}/${results.length} passed`);
+    }
+  } catch (e) {
+    logger.warn(`Startup proxy pre-screen failed: ${e.message}`);
+  }
+}, 5000);
 // Observability hub — metrics + alerts (fed by refreshes, visits, AI stats)
 const observability = new ObservabilityHub(config.observability);
 freeProxyFetcher.setObservability(observability);
