@@ -1,0 +1,12 @@
+{
+  "appId": "com.cyberelias.websense",
+  "appName": "WebSense",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#030712"
+  }
+}

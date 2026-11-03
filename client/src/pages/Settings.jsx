@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Trash2, RotateCcw, ShieldCheck, ShieldOff, Wifi, WifiOff } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Save, Trash2, RotateCcw, ShieldCheck, ShieldOff, Wifi, WifiOff, Server, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { getConfig, updateConfig, cleanupDb, getEngineStatus, getVpnStatus, getVpnConfig, updateVpnConfig, connectVpn, disconnectVpn, verifyVpn } from '../services/api';
+import { getServerOrigin, setServerOrigin, isNativeApp } from '../services/serverBase';
 
 const PRESETS = {
   stealth: { minInterval: 30000, maxInterval: 120000, concurrency: 1 },
@@ -20,6 +22,9 @@ export default function Settings() {
   const [browserAvail, setBrowserAvail] = useState(null); // { available, reason } from engine status
   const [vpn, setVpn] = useState(null);       // status from /vpn/status
   const [vpnCfg, setVpnCfg] = useState(null); // config from /vpn/config
+  const [serverUrl, setServerUrl] = useState(getServerOrigin());
+  const [searchParams] = useSearchParams();
+  const needsSetup = searchParams.get('setup') === '1';
 
   useEffect(() => {
     const load = async () => {
@@ -92,11 +97,61 @@ export default function Settings() {
     toast.info(`Applied ${preset === PRESETS.stealth ? 'stealth' : preset === PRESETS.moderate ? 'moderate' : preset === PRESETS.aggressive ? 'aggressive' : 'maximum'} preset`);
   };
 
+  const saveServerUrl = () => {
+    setServerOrigin(serverUrl);
+    toast.success('Server saved — reloading…');
+    setTimeout(() => window.location.reload(), 400);
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold">Settings</h2>
         <p className="text-dark-400">Configure engine behavior</p>
+      </div>
+
+      {needsSetup && (
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200 flex items-start gap-2">
+          <Smartphone className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            Welcome! First, point this app at your websense server (hosted or on
+            your LAN), then save — the app will reconnect automatically.
+          </span>
+        </div>
+      )}
+
+      <div className="card space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Server className="w-5 h-5 text-blue-400" /> Server connection
+          {isNativeApp() && (
+            <span className="text-xs font-normal px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+              Android app
+            </span>
+          )}
+        </h3>
+        <div>
+          <label className="block text-sm text-dark-400 mb-2">
+            websense server URL
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="url"
+              inputMode="url"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              placeholder="https://your-server.example:3111  ·  emulator: http://10.0.2.2:3111"
+              className="input flex-1 min-w-0 w-full"
+            />
+            <button type="button" onClick={saveServerUrl} className="btn-primary flex items-center gap-2 justify-center">
+              <Save className="w-4 h-4" /> Save & reconnect
+            </button>
+          </div>
+          <p className="text-xs text-dark-500 mt-2">
+            Leave empty for same-origin (default web deployment). The Android app
+            bundles the dashboard locally and talks to this URL for API + live
+            updates. Use your LAN IP to reach a server on the same network.
+          </p>
+        </div>
       </div>
 
       <div className="card">

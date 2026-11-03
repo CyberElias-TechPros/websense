@@ -1,7 +1,10 @@
 import axios from 'axios';
+import { getServerOrigin } from './serverBase';
 
 // In dev, Vite proxies /api + /socket.io to the backend. In production the
 // client is served by the backend (same origin), so relative URLs work.
+// Native (Capacitor) builds bundle the assets and point at a runtime-configured
+// server origin instead — see services/serverBase.js and Settings → Server.
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 // Optional API token when the backend runs with API_TOKEN set.
@@ -15,8 +18,11 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach Bearer token to every request when one is configured
+// Resolve the target server per request (origin may be set at runtime) and
+// attach the Bearer token when one is configured.
 api.interceptors.request.use((config) => {
+  const origin = getServerOrigin();
+  config.baseURL = origin ? `${origin}/api` : API_BASE;
   const token = getApiToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;

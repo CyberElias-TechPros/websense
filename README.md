@@ -13,9 +13,16 @@ websense
 > URL × device × vantage-point matrix, geo-block / app-wall / redirect-loop /
 > content-divergence detection, heatmap dashboard, REST + WebSocket API.
 > Low-volume, openly identified (`X-Websense-QA` header), no stealth —
-> whitelist it in your own WAF/analytics. 34 tests green.
+> whitelist it in your own WAF/analytics. 67 tests green.
 >
-> 📁 **Code:** `server/` (backend) · `client/` (dashboard) · `ROADMAP.md` (ultra-granular roadmap + todo list, web + Android)
+> ### 📱 NEW — Native Android app (Capacitor, see [BUILD-ANDROID.md](BUILD-ANDROID.md))
+>
+> The dashboard as an Android app: bundled UI + launcher icon, points at your
+> websense server (hosted or LAN) via **Settings → Server connection**, mobile
+> drawer navigation, live Socket.IO feed. Build the APK with
+> `cd client && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug`.
+>
+> 📁 **Code:** `server/` (backend) · `client/` (dashboard) · `client/android/` (native app) · `ROADMAP.md` (ultra-granular roadmap + todo list, web + Android)
 > 🚀 **Run:** `cd server && npm install && DEMO_MODE=1 npm run dev` → http://localhost:3001
 > 🐳 **Docker:** `docker compose up --build` → http://localhost:3000
 >
